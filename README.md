@@ -155,6 +155,27 @@ stops the event — and what it built is kept. Until then `get_listeners` return
 A listener receives the dispatcher that ran it: the scoped, compiled or traceable one itself, but
 the wrapped one through an `ImmutableEventDispatcher`, which dispatches by delegating.
 
+## Use in an application
+
+Everything adding this package to an application on
+[xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what removing it undoes.
+
+- **Install** — `uv add "xtr-event-dispatcher[di]"`.
+- **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`,
+  imported from `xtr_event_dispatcher.bundle`. The messenger and scheduler bundles require it
+  when it is installed.
+- **Brings along** — the logging bundle, when xtr-logging is installed.
+- **Configure** — optional: with no configuration there is one empty dispatcher, and every
+  scanned listener joins it. Aliases and named dispatchers go in
+  `<app>/config/event_dispatcher.py`, a `@configure` function returning `EventDispatcherConfig`
+  — see [Configuration](#configuration).
+- **Environment** — nothing.
+- **Ignore** — nothing.
+- **Remove** — drop the `BUNDLES` entry and every `@as_event_listener`, delete
+  `<app>/config/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
+- **Check** — `debug:bundles` shows `event_dispatcher` as `listed` or `required`, and
+  `active`.
+
 ## Kernel / bundle
 
 ```python
