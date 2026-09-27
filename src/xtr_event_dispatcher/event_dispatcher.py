@@ -33,6 +33,15 @@ class _Entry:
     arity: int
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingRemoval:
+    """``obj.method`` removed while ``unbuilt`` lazy listeners may still build into it."""
+
+    obj: object
+    method: str
+    unbuilt: tuple[_Entry, ...]
+
+
 class EventDispatcher(EventDispatcherInterface):
     """Runs the listeners of each event, highest priority first.
 
@@ -52,7 +61,8 @@ class EventDispatcher(EventDispatcherInterface):
 
     Removing ``obj.method`` while a lazy listener of the event is still
     unbuilt cannot tell whether that listener is the one: the removal is kept,
-    and applied when it is built.
+    and applied when it is built — to the lazy listeners registered at the
+    time of the removal only, never to one added after it.
     """
 
     __slots__: ClassVar[tuple[str, ...]] = ("_listeners", "_pending_removals", "_sorted")
@@ -65,8 +75,9 @@ class EventDispatcher(EventDispatcherInterface):
         self._listeners: dict[str, dict[int, list[_Entry]]] = {}
         self._sorted: dict[str, list[_Entry]] = {}
         # Event name -> (object, method) removed while lazy listeners of the
-        # event were unbuilt; any of them that builds into one is dropped.
-        self._pending_removals: dict[str, list[tuple[object, str]]] = {}
+        # event were unbuilt, with those listeners; any of them that builds
+        # into it is dropped.
+        self._pending_removals: dict[str, list[_PendingRemoval]] = {}
 
     @override
     async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
@@ -156,10 +167,10 @@ class EventDispatcher(EventDispatcherInterface):
         if by_priority is None:
             return
 
-        unbuilt = False
+        unbuilt: list[_Entry] = []
         for priority, entries in list(by_priority.items()):
             kept = [entry for entry in entries if not _same(entry.listener, listener)]
-            unbuilt = unbuilt or any(_is_unbuilt(entry.listener) for entry in kept)
+            unbuilt.extend(entry for entry in kept if _is_unbuilt(entry.listener))
             if kept:
                 by_priority[priority] = kept
             else:
@@ -171,7 +182,9 @@ class EventDispatcher(EventDispatcherInterface):
 
         owner = _owner_of(listener)
         if unbuilt and owner is not None:
-            self._pending_removals.setdefault(name, []).append(owner)
+            removal = _PendingRemoval(owner[0], owner[1], tuple(unbuilt))
+            self._pending_removals.setdefault(name, []).append(removal)
+        self._prune_pending_removals(name)
 
     @override
     def add_subscriber(self, subscriber: EventSubscriberInterface) -> None:
@@ -230,8 +243,10 @@ class EventDispatcher(EventDispatcherInterface):
         listener = await lazy.resolve()
         owner = _owner_of(listener)
         removed = owner is not None and any(
-            obj is owner[0] and method == owner[1]
-            for obj, method in self._pending_removals.get(name, ())
+            removal.obj is owner[0]
+            and removal.method == owner[1]
+            and any(waiting is entry for waiting in removal.unbuilt)
+            for removal in self._pending_removals.get(name, ())
         )
         built = None if removed else _Entry(listener, positional_arity(listener))
         self._replace(name, entry, built)
@@ -255,8 +270,29 @@ class EventDispatcher(EventDispatcherInterface):
         if not by_priority:
             _ = self._listeners.pop(name, None)
         _ = self._sorted.pop(name, None)
+        self._prune_pending_removals(name)
 
-        if not any(_is_unbuilt(e.listener) for entries in by_priority.values() for e in entries):
+    def _prune_pending_removals(self, name: str) -> None:
+        """Forget, in each pending removal, the lazy listeners built or removed since."""
+        removals = self._pending_removals.get(name)
+        if not removals:
+            return
+        waiting = [
+            entry
+            for entries in self._listeners.get(name, {}).values()
+            for entry in entries
+            if _is_unbuilt(entry.listener)
+        ]
+        kept: list[_PendingRemoval] = []
+        for removal in removals:
+            unbuilt = tuple(
+                entry for entry in removal.unbuilt if any(entry is other for other in waiting)
+            )
+            if unbuilt:
+                kept.append(_PendingRemoval(removal.obj, removal.method, unbuilt))
+        if kept:
+            self._pending_removals[name] = kept
+        else:
             _ = self._pending_removals.pop(name, None)
 
 

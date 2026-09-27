@@ -519,6 +519,37 @@ async def test_a_pending_removal_drops_only_the_listener_it_names(
 
 
 @pytest.mark.anyio
+async def test_a_pending_removal_spares_a_lazy_listener_added_after_it(
+    dispatcher: EventDispatcher,
+) -> None:
+    recorder = DispatcherRecorder()
+    earlier = LazyListener(_Factory(recorder), "foo")
+    dispatcher.add_listener("foo", earlier)
+    dispatcher.remove_listener("foo", recorder.foo)
+    dispatcher.remove_listener("foo", earlier)
+    dispatcher.add_listener("foo", LazyListener(_Factory(recorder), "foo"))
+
+    _ = await dispatcher.dispatch(Event(), "foo")
+
+    assert recorder.name == "foo"
+    assert dispatcher.get_listeners("foo") == [recorder.foo]
+
+
+@pytest.mark.anyio
+async def test_a_pending_removal_spares_a_lazy_listener_added_while_it_waits(
+    dispatcher: EventDispatcher,
+) -> None:
+    recorder = DispatcherRecorder()
+    dispatcher.add_listener("foo", LazyListener(_Factory(recorder), "foo"))
+    dispatcher.remove_listener("foo", recorder.foo)
+    dispatcher.add_listener("foo", LazyListener(_Factory(recorder), "foo"))
+
+    _ = await dispatcher.dispatch(Event(), "foo")
+
+    assert dispatcher.get_listeners("foo") == [recorder.foo]
+
+
+@pytest.mark.anyio
 async def test_a_pending_removal_leaves_other_priorities_alone(
     dispatcher: EventDispatcher,
 ) -> None:
