@@ -202,3 +202,12 @@ async def test_a_listener_removed_while_the_event_is_dispatched_does_not_run_for
     _ = await traced.dispatch(Event(), "foo")
 
     assert ran == ["first"]
+
+
+async def test_an_event_nobody_listens_to_is_recorded_once(
+    traced: TraceableEventDispatcher,
+) -> None:
+    for name in ("foo", "bar", "foo"):
+        _ = await traced.dispatch(Event(), name)
+
+    assert traced.get_orphaned_events() == ["foo", "bar"]

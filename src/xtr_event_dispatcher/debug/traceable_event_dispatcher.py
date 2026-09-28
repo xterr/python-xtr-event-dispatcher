@@ -58,7 +58,8 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         """Trace ``dispatcher``, writing to ``logger`` when one is given."""
         self._dispatcher = dispatcher
         self._logger = logger
-        self._orphaned: list[str] = []
+        # Insertion-ordered and without repeats: a hot unheard event is listed once.
+        self._orphaned: dict[str, None] = {}
         # Event name -> [listener as registered, what it was described as, calls].
         self._called: dict[str, list[tuple[Listener, ListenerInfo, int]]] = {}
 
@@ -117,12 +118,15 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         return sorted(not_called, key=lambda info: (info.event, -(info.priority or 0)))
 
     def get_orphaned_events(self) -> list[str]:
-        """Return the events dispatched with nobody listening since the last reset, in order."""
+        """Return the events dispatched with nobody listening since the last reset.
+
+        Each is listed once, in the order it was first dispatched.
+        """
         return list(self._orphaned)
 
     def reset(self) -> None:
         """Forget everything recorded, so the next unit of work starts from nothing."""
-        self._orphaned = []
+        self._orphaned = {}
         self._called = {}
 
     @overload
@@ -193,7 +197,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
     def _wrap(self, name: str) -> list[WrappedListener]:
         if not self._dispatcher.has_listeners(name):
-            self._orphaned.append(name)
+            self._orphaned[name] = None
             return []
 
         return [
