@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextvars
 from typing import final
 
+import anyio
 import pytest
 from typing_extensions import override
 from xtr_logging_contracts import AbstractLogger, Context, LevelLike
@@ -211,3 +213,107 @@ async def test_an_event_nobody_listens_to_is_recorded_once(
         _ = await traced.dispatch(Event(), name)
 
     assert traced.get_orphaned_events() == ["foo", "bar"]
+
+
+async def test_two_concurrent_units_record_only_their_own_events(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("a", _one)
+    inner.add_listener("b", _two)
+    both_dispatched = anyio.Event()
+    pending = {"count": 2}
+    seen: dict[str, set[str]] = {}
+
+    async def unit(event_name: str) -> None:
+        traced.begin_unit()
+        _ = await traced.dispatch(Event(), event_name)
+        pending["count"] -= 1
+        if pending["count"] == 0:
+            both_dispatched.set()
+        await both_dispatched.wait()
+        seen[event_name] = {info.pretty for info in traced.get_called_listeners()}
+        traced.end_unit()
+
+    async with anyio.create_task_group() as task_group:
+        _ = task_group.start_soon(unit, "a")
+        _ = task_group.start_soon(unit, "b")
+
+    assert seen["a"] == {f"{__name__}._one"}
+    assert seen["b"] == {f"{__name__}._two"}
+
+
+async def test_reset_inside_a_unit_clears_only_the_units_trace(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    _ = await traced.dispatch(Event(), "foo")
+
+    traced.begin_unit()
+    _ = await traced.dispatch(Event(), "foo")
+    traced.reset()
+
+    assert traced.get_called_listeners() == []
+
+    traced.end_unit()
+
+    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+
+
+async def test_recording_returns_to_the_instance_after_the_unit_ends(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+
+    traced.begin_unit()
+    _ = await traced.dispatch(Event(), "foo")
+    traced.end_unit()
+
+    assert traced.get_called_listeners() == []
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+
+
+async def test_a_copied_context_records_into_the_unit_it_still_points_at(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    traced.begin_unit()
+    context = contextvars.copy_context()
+
+    async def dispatch_in_copy() -> None:
+        _ = await traced.dispatch(Event(), "foo")
+
+    # Drive the coroutine inside the copied context, the way a synchronous
+    # endpoint run under a copied context would record into the open unit.
+    coroutine = dispatch_in_copy()
+    try:
+        while True:
+            context.run(coroutine.send, None)
+    except StopIteration:
+        pass
+
+    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+
+    traced.end_unit()
+
+
+async def test_a_unit_only_exists_while_it_is_open(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+
+    traced.begin_unit()
+    _ = await traced.dispatch(Event(), "foo")
+    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+    traced.begin_unit()
+
+    assert traced.get_called_listeners() == []
+
+    traced.end_unit()

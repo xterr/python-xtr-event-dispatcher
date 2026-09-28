@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import final
+
 import pytest
 
 from tests.support.subscribers import Subscriber
@@ -100,3 +102,24 @@ def test_removing_a_subscriber_is_refused(
         dispatcher.remove_subscriber(subscriber)
 
     assert inner.has_listeners("pre.foo")
+
+
+def test_reset_reaches_a_wrapped_dispatcher_that_has_one() -> None:
+    calls: list[str] = []
+
+    @final
+    class Resettable(EventDispatcher):
+        def reset(self) -> None:
+            calls.append("reset")
+
+    dispatcher = ImmutableEventDispatcher(Resettable())
+
+    dispatcher.reset()
+
+    assert calls == ["reset"]
+
+
+def test_reset_is_a_no_op_when_the_wrapped_dispatcher_has_none(
+    dispatcher: ImmutableEventDispatcher,
+) -> None:
+    dispatcher.reset()

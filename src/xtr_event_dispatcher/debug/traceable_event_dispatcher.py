@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import replace
 from typing import TYPE_CHECKING, TypeVar, final, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
+from xtr_service_contracts import ResetInterface
 
 from xtr_event_dispatcher._prioritized_listeners import prioritized_listeners
 from xtr_event_dispatcher.event_dispatcher import EventDispatcher
@@ -29,7 +31,24 @@ _EventT = TypeVar("_EventT")
 
 
 @final
-class TraceableEventDispatcher(EventDispatcherInterface):
+class _Trace:
+    """What one unit of work recorded: the listeners that ran, the events nobody heard.
+
+    Mutated in place, so a synchronous endpoint run in a copied context
+    records into the same trace the context still points at.
+    """
+
+    __slots__ = ("called", "orphaned")
+
+    def __init__(self) -> None:
+        # Insertion-ordered and without repeats: a hot unheard event is listed once.
+        self.orphaned: dict[str, None] = {}
+        # Event name -> [listener as registered, what it was described as, calls].
+        self.called: dict[str, list[tuple[Listener, ListenerInfo, int]]] = {}
+
+
+@final
+class TraceableEventDispatcher(EventDispatcherInterface, ResetInterface):
     """Dispatches through another dispatcher's listeners, keeping track of what happened.
 
     For development: it answers which listeners ran and how often, which
@@ -46,6 +65,11 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     It runs the listeners itself, so a listener receives this dispatcher. What
     it records grows until :meth:`reset`, which a long-running process calls
     between units of work.
+
+    :meth:`begin_unit` and :meth:`end_unit` open a trace scoped to the calling
+    context, so overlapping units of work — concurrent requests — each record
+    only their own. A unit of work exists only when tracing is on: the bundle
+    wraps a dispatcher in this one only in debug mode.
     """
 
     def __init__(
@@ -56,10 +80,8 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         """Trace ``dispatcher``, writing to ``logger`` when one is given."""
         self._dispatcher = dispatcher
         self._logger = logger
-        # Insertion-ordered and without repeats: a hot unheard event is listed once.
-        self._orphaned: dict[str, None] = {}
-        # Event name -> [listener as registered, what it was described as, calls].
-        self._called: dict[str, list[tuple[Listener, ListenerInfo, int]]] = {}
+        self._trace = _Trace()
+        self._unit: ContextVar[_Trace | None] = ContextVar("event_trace_unit", default=None)
 
     @override
     async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
@@ -91,11 +113,19 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
         return event
 
+    def begin_unit(self) -> None:
+        """Open a trace scoped to the calling context, for one unit of work of its own."""
+        _ = self._unit.set(_Trace())
+
+    def end_unit(self) -> None:
+        """Close the unit opened in this context; recording returns to the instance."""
+        _ = self._unit.set(None)
+
     def get_called_listeners(self) -> list[ListenerInfo]:
         """Describe every listener that ran since the last reset, with how often it ran."""
         return [
             replace(info, calls=calls)
-            for called in self._called.values()
+            for called in self._active().called.values()
             for _, info, calls in called
         ]
 
@@ -104,9 +134,10 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
         Ordered by event name, then from the highest priority down.
         """
+        called_by_name = self._active().called
         not_called: list[ListenerInfo] = []
         for name, listeners in self._dispatcher.get_listeners().items():
-            called = [listener for listener, _, _ in self._called.get(name, ())]
+            called = [listener for listener, _, _ in called_by_name.get(name, ())]
             not_called.extend(
                 WrappedListener(listener, self._dispatcher).get_info(name)
                 for listener in listeners
@@ -120,12 +151,19 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
         Each is listed once, in the order it was first dispatched.
         """
-        return list(self._orphaned)
+        return list(self._active().orphaned)
 
+    @override
     def reset(self) -> None:
-        """Forget everything recorded, so the next unit of work starts from nothing."""
-        self._orphaned = {}
-        self._called = {}
+        """Forget everything the active trace recorded, so the next unit starts from nothing."""
+        trace = self._active()
+        trace.orphaned.clear()
+        trace.called.clear()
+
+    def _active(self) -> _Trace:
+        """Return the trace recording is going to: the open unit's, or the instance's."""
+        unit = self._unit.get()
+        return self._trace if unit is None else unit
 
     @overload
     def get_listeners(self, event_name: None = None) -> dict[str, list[Listener]]: ...
@@ -195,7 +233,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
     def _wrap(self, name: str) -> list[WrappedListener]:
         if not self._dispatcher.has_listeners(name):
-            self._orphaned[name] = None
+            self._active().orphaned[name] = None
             return []
 
         return [
@@ -219,7 +257,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
                 skipped = True
 
     def _count(self, name: str, listener: WrappedListener) -> None:
-        called = self._called.setdefault(name, [])
+        called = self._active().called.setdefault(name, [])
         original = listener.get_wrapped_listener()
         for index, (seen, info, calls) in enumerate(called):
             if seen == original:

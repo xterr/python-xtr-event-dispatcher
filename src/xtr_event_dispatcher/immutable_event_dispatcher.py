@@ -120,3 +120,12 @@ class ImmutableEventDispatcher(EventDispatcherInterface):
             BadMethodCallError: Always.
         """
         raise BadMethodCallError("remove_subscriber")
+
+    def reset(self) -> None:
+        """Forward a reset to the wrapped dispatcher when it has one, a no-op otherwise.
+
+        A trace behind this immutable one is still reset between units of work.
+        """
+        reset = getattr(self._dispatcher, "reset", None)
+        if callable(reset):
+            _ = reset()
