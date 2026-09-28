@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar, TypeVar, final, overload
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import event_name_of
 
+from ._prioritized_listeners import prioritized_listeners
 from .event_dispatcher import EventDispatcher
 
 if TYPE_CHECKING:
@@ -95,6 +96,15 @@ class ScopedEventDispatcher(EventDispatcher):
         return self._dispatcher.get_listener_priority(name, listener)
 
     @override
+    def get_prioritized_listeners(self, event_name: str | type, /) -> list[tuple[int, Listener]]:
+        """Return the listeners the event runs, here or in the wrapped one, with priorities."""
+        name = event_name_of(event_name)
+        if super().has_listeners(name):
+            return super().get_prioritized_listeners(name)
+
+        return prioritized_listeners(self._dispatcher, name)
+
+    @override
     def has_listeners(self, event_name: str | type | None = None) -> bool:
         """Tell whether the event has a listener here or in the wrapped dispatcher."""
         return super().has_listeners(event_name) or self._dispatcher.has_listeners(event_name)
@@ -105,6 +115,5 @@ class ScopedEventDispatcher(EventDispatcher):
             return
 
         self._merged.add(name)
-        for listener in self._dispatcher.get_listeners(name):
-            priority = self._dispatcher.get_listener_priority(name, listener)
-            super().add_listener(name, listener, priority or 0)
+        for priority, listener in prioritized_listeners(self._dispatcher, name):
+            super().add_listener(name, listener, priority)

@@ -11,6 +11,7 @@ from xtr_event_dispatcher import (
     LazyListener,
     ScopedEventDispatcher,
 )
+from xtr_event_dispatcher.debug import TraceableEventDispatcher
 
 
 @pytest.fixture
@@ -153,3 +154,43 @@ async def test_a_lazy_listener_copied_from_the_wrapped_dispatcher_is_built_once(
     _ = await parent.dispatch(Event(), "pre.foo")
 
     assert len(calls) == 1
+
+
+@pytest.mark.anyio
+async def test_a_wrapped_listener_registered_at_two_priorities_keeps_both(
+    parent: EventDispatcher,
+    dispatcher: ScopedEventDispatcher,
+) -> None:
+    called: list[str] = []
+
+    def twice() -> None:
+        called.append("twice")
+
+    parent.add_listener("pre.foo", twice, 10)
+    parent.add_listener("pre.foo", lambda: called.append("middle"), 5)
+    parent.add_listener("pre.foo", twice, -10)
+    dispatcher.add_listener("pre.foo", lambda: called.append("scoped"))
+
+    _ = await dispatcher.dispatch(Event(), "pre.foo")
+
+    assert called == ["twice", "middle", "scoped", "twice"]
+
+
+@pytest.mark.anyio
+async def test_a_traced_wrapped_listener_registered_at_two_priorities_keeps_both(
+    parent: EventDispatcher,
+) -> None:
+    called: list[str] = []
+
+    def twice() -> None:
+        called.append("twice")
+
+    parent.add_listener("pre.foo", twice, 10)
+    parent.add_listener("pre.foo", lambda: called.append("middle"), 5)
+    parent.add_listener("pre.foo", twice, -10)
+    scoped = ScopedEventDispatcher(ImmutableEventDispatcher(TraceableEventDispatcher(parent)))
+    scoped.add_listener("pre.foo", lambda: called.append("scoped"))
+
+    _ = await scoped.dispatch(Event(), "pre.foo")
+
+    assert called == ["twice", "middle", "scoped", "twice"]

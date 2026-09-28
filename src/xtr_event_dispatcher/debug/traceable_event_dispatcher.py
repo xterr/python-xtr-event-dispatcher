@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, TypeVar, final, overload
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
 
+from xtr_event_dispatcher._prioritized_listeners import prioritized_listeners
 from xtr_event_dispatcher.event_dispatcher import EventDispatcher
 from xtr_event_dispatcher.event_dispatcher_interface import EventDispatcherInterface
 from xtr_event_dispatcher.lazy_listener import LazyListener
@@ -145,6 +146,10 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     def get_listener_priority(self, event_name: str | type, listener: Listener) -> int | None:
         """Return the priority the wrapped dispatcher runs ``listener`` at."""
         return self._dispatcher.get_listener_priority(event_name, listener)
+
+    def get_prioritized_listeners(self, event_name: str | type, /) -> list[tuple[int, Listener]]:
+        """Return the wrapped dispatcher's listeners of the event, each with its priority."""
+        return prioritized_listeners(self._dispatcher, event_name_of(event_name))
 
     @override
     def has_listeners(self, event_name: str | type | None = None) -> bool:

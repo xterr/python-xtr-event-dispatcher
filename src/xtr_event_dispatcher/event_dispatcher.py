@@ -227,6 +227,19 @@ class EventDispatcher(EventDispatcherInterface):
         for declared in listeners_subscribed_by(type(subscriber)):
             self.remove_listener(declared.event_name, bind(subscriber, declared))
 
+    def get_prioritized_listeners(self, event_name: str | type, /) -> list[tuple[int, Listener]]:
+        """Return the event's listeners in the order they run, each with its priority.
+
+        A listener registered at two priorities appears at both, which
+        :meth:`get_listener_priority` cannot say.
+        """
+        by_priority = self._listeners.get(event_name_of(event_name), {})
+        return [
+            (priority, entry.listener)
+            for priority in sorted(by_priority, reverse=True)
+            for entry in by_priority[priority]
+        ]
+
     async def build_listener(
         self, event_name: str | type, listener: LazyListener
     ) -> Listener | None:
