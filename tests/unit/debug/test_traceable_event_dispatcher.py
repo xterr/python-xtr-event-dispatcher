@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import contextvars
+import subprocess
+import sys
 from typing import final
 
 import anyio
@@ -317,3 +319,18 @@ async def test_a_unit_only_exists_while_it_is_open(
     assert traced.get_called_listeners() == []
 
     traced.end_unit()
+
+
+def test_the_debug_module_imports_without_the_service_contracts() -> None:
+    program = (
+        "import sys; sys.modules['xtr_service_contracts'] = None; import xtr_event_dispatcher.debug"
+    )
+
+    result = subprocess.run(  # noqa: S603 — the program is a fixed literal, not user input
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

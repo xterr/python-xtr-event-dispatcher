@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, TypeVar, final, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
-from xtr_service_contracts import ResetInterface
 
 from xtr_event_dispatcher._prioritized_listeners import prioritized_listeners
 from xtr_event_dispatcher.event_dispatcher import EventDispatcher
@@ -48,7 +47,7 @@ class _Trace:
 
 
 @final
-class TraceableEventDispatcher(EventDispatcherInterface, ResetInterface):
+class TraceableEventDispatcher(EventDispatcherInterface):
     """Dispatches through another dispatcher's listeners, keeping track of what happened.
 
     For development: it answers which listeners ran and how often, which
@@ -153,7 +152,6 @@ class TraceableEventDispatcher(EventDispatcherInterface, ResetInterface):
         """
         return list(self._active().orphaned)
 
-    @override
     def reset(self) -> None:
         """Forget everything the active trace recorded, so the next unit starts from nothing."""
         trace = self._active()
