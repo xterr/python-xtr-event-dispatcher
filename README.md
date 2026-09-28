@@ -107,7 +107,8 @@ async def chain(event: Event, name: str, dispatcher: EventDispatcherInterface) -
 
 Listeners run by priority, highest first; sharing a priority, in the order added. Bound methods
 of one object compare equal, so `remove_listener(event, obj.method)` removes what
-`add_listener(event, obj.method)` added.
+`add_listener(event, obj.method)` added. A listener added while its event is being dispatched
+first runs on the next dispatch; one removed meanwhile does not run for the rest of it.
 
 ### Subscribers
 

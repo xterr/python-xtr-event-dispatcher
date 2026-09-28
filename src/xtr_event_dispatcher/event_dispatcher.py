@@ -53,7 +53,9 @@ class EventDispatcher(EventDispatcherInterface):
     await dispatcher.dispatch(OrderPlaced(42))
     ```
 
-    Listeners sharing a priority run in the order they were added. A
+    Listeners sharing a priority run in the order they were added. One added
+    while an event is dispatched first runs on the next dispatch; one removed
+    meanwhile does not run for the rest of it. A
     :class:`~xtr_event_dispatcher.lazy_listener.LazyListener` is built just
     before it first runs, so one that a stopped event never reaches is never
     built — and until then it is the lazy listener, not a bound method, that
@@ -91,9 +93,18 @@ class EventDispatcher(EventDispatcherInterface):
         arguments = (event, name, self)
 
         # A snapshot: a listener added while this dispatch runs waits for the next one.
-        for entry in self._sort(name):
+        # One removed meanwhile is skipped, so a listener can unsubscribe another at once.
+        running = self._sort(name)
+        current = running
+        registered: set[int] | None = None
+        for entry in running:
             if stoppable is not None and stoppable.is_propagation_stopped():
                 break
+            if self._sorted.get(name) is not current:
+                current = self._sort(name)
+                registered = {id(candidate) for candidate in current}
+            if registered is not None and id(entry) not in registered:
+                continue
 
             listener = entry.listener
             current = (

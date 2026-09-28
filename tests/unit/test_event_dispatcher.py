@@ -808,3 +808,45 @@ class _SubscriberWithAMissingMethod(Subscriber):
     @override
     def get_subscribed_events(cls) -> Mapping[str | type, SubscribedEvents]:
         return {PRE_FOO: "missing"}
+
+
+@pytest.mark.anyio
+async def test_a_listener_removed_while_the_event_is_dispatched_does_not_run_for_it(
+    dispatcher: EventDispatcher,
+) -> None:
+    ran: list[str] = []
+
+    def second(_: object) -> None:
+        ran.append("second")
+
+    def first(_: object) -> None:
+        ran.append("first")
+        dispatcher.remove_listener("foo", second)
+
+    dispatcher.add_listener("foo", first, 10)
+    dispatcher.add_listener("foo", second)
+
+    _ = await dispatcher.dispatch(Event(), "foo")
+
+    assert ran == ["first"]
+    assert dispatcher.get_listeners("foo") == [first]
+
+
+@pytest.mark.anyio
+async def test_a_listener_added_while_the_event_is_dispatched_waits_for_the_next(
+    dispatcher: EventDispatcher,
+) -> None:
+    ran: list[str] = []
+
+    def late(_: object) -> None:
+        ran.append("late")
+
+    def first(_: object) -> None:
+        ran.append("first")
+        dispatcher.add_listener("foo", late)
+
+    dispatcher.add_listener("foo", first, 10)
+
+    _ = await dispatcher.dispatch(Event(), "foo")
+
+    assert ran == ["first"]
