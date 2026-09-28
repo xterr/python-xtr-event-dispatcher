@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, ClassVar, TypeVar, final, overload
+from typing import TYPE_CHECKING, TypeVar, final, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
@@ -47,8 +47,6 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     it records grows until :meth:`reset`, which a long-running process calls
     between units of work.
     """
-
-    __slots__: ClassVar[tuple[str, ...]] = ("_called", "_dispatcher", "_logger", "_orphaned")
 
     def __init__(
         self,

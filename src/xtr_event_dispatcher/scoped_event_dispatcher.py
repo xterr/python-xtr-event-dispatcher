@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, TypeVar, final, overload
+from typing import TYPE_CHECKING, TypeVar, final, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import event_name_of
@@ -39,8 +39,6 @@ class ScopedEventDispatcher(EventDispatcher):
     sets interleave by priority. An event nothing was added for here is
     dispatched by the wrapped dispatcher itself.
     """
-
-    __slots__: ClassVar[tuple[str, ...]] = ("_dispatcher", "_merged")
 
     def __init__(self, dispatcher: IntrospectableDispatcher) -> None:
         """Wrap ``dispatcher``, whose listeners keep running for every event."""

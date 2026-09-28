@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, NoReturn, final
+from typing import TYPE_CHECKING, NoReturn, final
 
 from typing_extensions import override
 
@@ -44,8 +44,6 @@ class CompiledEventDispatcher(EventDispatcher):
     :class:`~xtr_event_dispatcher.scoped_event_dispatcher.ScopedEventDispatcher`
     wrapping it.
     """
-
-    __slots__: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, listeners: Mapping[str | type, Sequence[tuple[Listener, int]]]) -> None:
         """Register every listener, event by event, each at its priority.

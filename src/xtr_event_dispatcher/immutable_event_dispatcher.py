@@ -43,8 +43,6 @@ class ImmutableEventDispatcher(EventDispatcherInterface):
     ```
     """
 
-    __slots__ = ("_dispatcher",)
-
     def __init__(self, dispatcher: IntrospectableDispatcher) -> None:
         """Wrap ``dispatcher``, which keeps dispatching and answering for its listeners."""
         self._dispatcher = dispatcher

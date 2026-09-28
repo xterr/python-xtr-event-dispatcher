@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, TypeVar, overload
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
@@ -67,8 +67,8 @@ class EventDispatcher(EventDispatcherInterface):
     time of the removal only, never to one added after it.
     """
 
-    __slots__: ClassVar[tuple[str, ...]] = ("_listeners", "_pending_removals", "_sorted")
-
+    # No __slots__: the dispatcher interface is a protocol, and its generic
+    # base gives every instance a __dict__ whatever a subclass declares.
     def __init__(self) -> None:
         """Start with no listener."""
         # Event name -> priority -> entries in registration order. An event or
