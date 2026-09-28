@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, ClassVar, TypeVar, final, overload
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
 
+from xtr_event_dispatcher.event_dispatcher import EventDispatcher
 from xtr_event_dispatcher.event_dispatcher_interface import EventDispatcherInterface
+from xtr_event_dispatcher.lazy_listener import LazyListener
 
 from .wrapped_listener import WrappedListener
 
@@ -76,10 +78,14 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
         listeners = self._wrap(name)
         try:
-            for listener in listeners:
+            for index, listener in enumerate(listeners):
                 if stoppable is not None and stoppable.is_propagation_stopped():
                     break
-                await listener(event, name, self)
+                current = await self._current(name, listener)
+                if current is None:
+                    continue
+                listeners[index] = current
+                await current(event, name, self)
         finally:
             self._record(name, listeners)
 
@@ -164,6 +170,21 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     def remove_subscriber(self, subscriber: EventSubscriberInterface) -> None:
         """Remove ``subscriber`` from the wrapped dispatcher."""
         self._dispatcher.remove_subscriber(subscriber)
+
+    async def _current(self, name: str, listener: WrappedListener) -> WrappedListener | None:
+        """Return what to run for ``listener`` now, as the wrapped dispatcher would.
+
+        ``None`` for one removed since the dispatch began. A lazy listener is
+        built through the wrapped dispatcher when it can, so what it built
+        replaces it there — the same as an untraced dispatch.
+        """
+        original = listener.get_wrapped_listener()
+        if self._dispatcher.get_listener_priority(name, original) is None:
+            return None
+        if isinstance(original, LazyListener) and isinstance(self._dispatcher, EventDispatcher):
+            built = await self._dispatcher.build_listener(name, original)
+            return None if built is None else WrappedListener(built, self._dispatcher)
+        return listener
 
     def _wrap(self, name: str) -> list[WrappedListener]:
         if not self._dispatcher.has_listeners(name):

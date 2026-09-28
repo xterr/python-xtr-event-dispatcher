@@ -8,7 +8,7 @@ from xtr_logging_contracts import AbstractLogger, Context, LevelLike
 
 from tests.support.listeners import RecordingListener
 from tests.support.subscribers import Subscriber
-from xtr_event_dispatcher import Event, EventDispatcher
+from xtr_event_dispatcher import Event, EventDispatcher, LazyListener
 from xtr_event_dispatcher.debug import ListenerInfo, TraceableEventDispatcher
 
 pytestmark = pytest.mark.anyio
@@ -164,3 +164,41 @@ def test_changes_reach_the_wrapped_dispatcher(
     traced.remove_subscriber(subscriber)
 
     assert not inner.has_listeners()
+
+
+async def test_a_lazy_listener_is_replaced_by_what_it_built_as_without_tracing(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    listener = RecordingListener()
+
+    async def factory() -> object:
+        return listener
+
+    inner.add_listener("foo", LazyListener(factory, "pre_foo"))
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert inner.get_listeners("foo") == [listener.pre_foo]
+    assert listener.pre_foo_invoked
+
+
+async def test_a_listener_removed_while_the_event_is_dispatched_does_not_run_for_it(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    ran: list[str] = []
+
+    def second(_: object) -> None:
+        ran.append("second")
+
+    def first(_: object) -> None:
+        ran.append("first")
+        inner.remove_listener("foo", second)
+
+    inner.add_listener("foo", first, 10)
+    inner.add_listener("foo", second)
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert ran == ["first"]

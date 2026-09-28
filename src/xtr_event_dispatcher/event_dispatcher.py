@@ -227,6 +227,26 @@ class EventDispatcher(EventDispatcherInterface):
         for declared in listeners_subscribed_by(type(subscriber)):
             self.remove_listener(declared.event_name, bind(subscriber, declared))
 
+    async def build_listener(
+        self, event_name: str | type, listener: LazyListener
+    ) -> Listener | None:
+        """Build ``listener``, a lazy listener of the event, and put what it built in its place.
+
+        What a dispatch reaching it does — for a dispatcher that runs this
+        one's listeners itself, as the traceable one does, so the lazy
+        listener is replaced there too.
+
+        Returns:
+            What to run: the built listener, or ``None`` when ``listener`` is
+            no longer registered for the event or a pending removal drops it.
+        """
+        name = event_name_of(event_name)
+        for entry in self._sort(name):
+            if entry.listener is listener:
+                built = await self._build(name, entry, listener)
+                return None if built is None else built.listener
+        return None
+
     def _sort(self, name: str) -> list[_Entry]:
         """Return the event's entries in running order, sorted once until they change."""
         cached = self._sorted.get(name)
