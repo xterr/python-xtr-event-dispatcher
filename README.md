@@ -156,6 +156,22 @@ stops the event — and what it built is kept. Until then `get_listeners` return
 A listener receives the dispatcher that ran it: the scoped, compiled or traceable one itself, but
 the wrapped one through an `ImmutableEventDispatcher`, which dispatches by delegating.
 
+### A trace per unit of work
+
+A `TraceableEventDispatcher` records into one trace per instance, growing until `reset()`. When
+several units of work overlap — concurrent requests through one shared dispatcher — that single
+trace would mix them. So it also offers `begin_unit()` and `end_unit()`: `begin_unit()` opens a
+trace scoped to the calling context, `end_unit()` closes it and recording returns to the
+instance. Because a unit lives in a context variable, overlapping units each record only their
+own, and — the trace being mutated in place — a synchronous listener run in a copied context
+still records into the unit the context points at.
+
+A unit of work exists only when tracing is on: the trace is a development instrument, so the
+bundle wraps a dispatcher in a `TraceableEventDispatcher` only in debug mode, and only then do
+`begin_unit`/`end_unit` do anything. A caller framing each request as a unit — such as
+[xtr-http-kernel](../xtr-http-kernel)'s lifecycle — calls them when they are present and leaves
+them alone otherwise.
+
 ## Use in an application
 
 Everything adding this package to an application on
