@@ -4,7 +4,7 @@ version = "1.4.0"
 description = "Let the parts of an application talk through events: listeners and subscribers run by priority, any of them able to stop the rest."
 readme = "README.md"
 authors = [
-    { name = "Razvan Ceana", email = "razvan@ceana.ro" }
+    { name = "Xterr", email = "me@xterr.dev" }
 ]
 requires-python = ">=3.11"
 license = "MIT"
