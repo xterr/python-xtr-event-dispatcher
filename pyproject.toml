@@ -1,6 +1,6 @@
 [project]
 name = "xtr-event-dispatcher"
-version = "1.5.0"
+version = "2.0.0"
 description = "Let the parts of an application talk through events: listeners and subscribers run by priority, any of them able to stop the rest."
 readme = "README.md"
 authors = [
@@ -24,14 +24,14 @@ classifiers = [
 # interface alone, for the traceable dispatcher's optional logger.
 dependencies = [
     "typing-extensions>=4.4",
-    "xtr-event-dispatcher-contracts>=1.0,<2",
-    "xtr-logging-contracts>=1.0,<2",
+    "xtr-event-dispatcher-contracts>=2.0,<3",
+    "xtr-logging-contracts>=2.0,<3",
 ]
 
 [project.optional-dependencies]
 di = [
-    "xtr-dependency-injection>=1.0,<2",
-    "xtr-service-contracts>=1.0,<2",
+    "xtr-dependency-injection>=2.0,<3",
+    "xtr-service-contracts>=2.0,<3",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
@@ -47,9 +47,9 @@ dev = [
     "pytest-cov>=5",
     "anyio>=4.0",
     "ty>=0.0.83",
-    "xtr-dependency-injection>=1.0,<2",
-    "xtr-logging>=1.0,<2",
-    "xtr-service-contracts>=1.0,<2",
+    "xtr-dependency-injection>=2.0,<3",
+    "xtr-logging>=2.0,<3",
+    "xtr-service-contracts>=2.0,<3",
 ]
 
 [build-system]
