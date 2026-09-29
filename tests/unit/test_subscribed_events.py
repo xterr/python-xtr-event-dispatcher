@@ -75,6 +75,8 @@ def test_ordering_targets_are_read_one_or_several() -> None:
         {"method": "on_foo", "priorty": 5},
         {"method": "on_foo", "priority": "high"},
         {"method": "on_foo", "before": [5]},
+        ("on_foo", True),
+        {"method": "on_foo", "priority": False},
     ],
     ids=[
         "a-number",
@@ -84,6 +86,8 @@ def test_ordering_targets_are_read_one_or_several() -> None:
         "an-unknown-key",
         "a-priority-that-is-not-a-number",
         "a-target-that-is-not-a-listener",
+        "a-pair-with-a-boolean-priority",
+        "a-boolean-priority",
     ],
 )
 def test_a_declaration_of_no_known_shape_is_refused(spec: object) -> None:

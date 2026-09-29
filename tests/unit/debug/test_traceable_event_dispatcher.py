@@ -321,6 +321,22 @@ async def test_a_unit_only_exists_while_it_is_open(
     traced.end_unit()
 
 
+async def test_ending_a_nested_unit_returns_to_the_outer_one(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    traced.begin_unit()
+    _ = await traced.dispatch(Event(), "foo")
+
+    traced.begin_unit()
+    traced.end_unit()
+
+    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+
+    traced.end_unit()
+
+
 def test_the_debug_module_imports_without_the_service_contracts() -> None:
     program = (
         "import sys; sys.modules['xtr_service_contracts'] = None; import xtr_event_dispatcher.debug"

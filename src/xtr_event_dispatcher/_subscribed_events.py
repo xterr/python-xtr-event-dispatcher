@@ -92,7 +92,9 @@ class _Reader:
         match item:
             case str() as method:
                 return SubscribedListenerDeclaration(self.event_name, method, None)
-            case (str() as method, int() as priority) if isinstance(item, tuple):
+            case (str() as method, int() as priority) if isinstance(item, tuple) and not isinstance(
+                priority, bool
+            ):
                 return SubscribedListenerDeclaration(self.event_name, method, priority)
             case Mapping():
                 return self._named(cast("Mapping[object, object]", item))
@@ -112,7 +114,7 @@ class _Reader:
             raise self._error(f'{item!r} needs a "method" naming the method to call')
 
         priority = item.get("priority")
-        if priority is not None and not isinstance(priority, int):
+        if priority is not None and (not isinstance(priority, int) or isinstance(priority, bool)):
             raise self._error(f'the "priority" of {method!r} must be an integer, got {priority!r}')
 
         return SubscribedListenerDeclaration(

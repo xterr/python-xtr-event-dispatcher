@@ -107,13 +107,13 @@ class EventDispatcher(EventDispatcherInterface):
                 continue
 
             listener = entry.listener
-            current = (
+            runnable = (
                 await self._build(name, entry, listener)
                 if isinstance(listener, LazyListener)
                 else entry
             )
-            if current is not None:
-                await call_listener(current.listener, current.arity, arguments)
+            if runnable is not None:
+                await call_listener(runnable.listener, runnable.arity, arguments)
 
         return event
 

@@ -154,6 +154,27 @@ async def test_dispatch_runs_only_the_listeners_of_that_event(dispatcher: EventD
 
 
 @pytest.mark.anyio
+async def test_a_dispatch_sorts_the_listeners_once(
+    dispatcher: EventDispatcher, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for _ in range(5):
+        dispatcher.add_listener(PRE_FOO, RecordingListener().pre_foo)
+    _ = dispatcher.get_listeners(PRE_FOO)  # sorted and kept, as a dispatch leaves them
+    sort = cast("Callable[[str], object]", getattr(dispatcher, "_sort"))  # noqa: B009 — the private method, spied on
+    sorts: list[str] = []
+
+    def counted(name: str) -> object:
+        sorts.append(name)
+        return sort(name)
+
+    monkeypatch.setattr(dispatcher, "_sort", counted)
+
+    _ = await dispatcher.dispatch(Event(), PRE_FOO)
+
+    assert len(sorts) == 1
+
+
+@pytest.mark.anyio
 async def test_dispatch_returns_the_event_it_was_given(dispatcher: EventDispatcher) -> None:
     dispatcher.add_listener(PRE_FOO, RecordingListener().pre_foo)
     event = Event()

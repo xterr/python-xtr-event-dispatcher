@@ -37,9 +37,10 @@ class _Trace:
     records into the same trace the context still points at.
     """
 
-    __slots__ = ("called", "orphaned")
+    __slots__ = ("called", "orphaned", "outer")
 
-    def __init__(self) -> None:
+    def __init__(self, outer: _Trace | None = None) -> None:
+        self.outer = outer
         # Insertion-ordered and without repeats: a hot unheard event is listed once.
         self.orphaned: dict[str, None] = {}
         # Event name -> [listener as registered, what it was described as, calls].
@@ -114,11 +115,12 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
     def begin_unit(self) -> None:
         """Open a trace scoped to the calling context, for one unit of work of its own."""
-        _ = self._unit.set(_Trace())
+        _ = self._unit.set(_Trace(self._unit.get()))
 
     def end_unit(self) -> None:
-        """Close the unit opened in this context; recording returns to the instance."""
-        _ = self._unit.set(None)
+        """Close the unit opened in this context; recording returns to where it was before."""
+        unit = self._unit.get()
+        _ = self._unit.set(None if unit is None else unit.outer)
 
     def get_called_listeners(self) -> list[ListenerInfo]:
         """Describe every listener that ran since the last reset, with how often it ran."""
