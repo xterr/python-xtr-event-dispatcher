@@ -12,12 +12,11 @@ from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_o
 from xtr_event_dispatcher._prioritized_listeners import prioritized_listeners
 from xtr_event_dispatcher.event_dispatcher import EventDispatcher
 from xtr_event_dispatcher.event_dispatcher_interface import EventDispatcherInterface
-from xtr_event_dispatcher.lazy_listener import LazyListener
 
 from .wrapped_listener import WrappedListener
 
 if TYPE_CHECKING:
-    from xtr_event_dispatcher_contracts import Listener
+    from xtr_event_dispatcher_contracts import Listener, ListenerIntrospectionInterface
     from xtr_logging_contracts import LoggerInterface
 
     from xtr_event_dispatcher.event_subscriber_interface import EventSubscriberInterface
@@ -43,8 +42,8 @@ class _Trace:
         self.outer = outer
         # Insertion-ordered and without repeats: a hot unheard event is listed once.
         self.orphaned: dict[str, None] = {}
-        # Event name -> [listener as registered, what it was described as, calls].
-        self.called: dict[str, list[tuple[Listener, ListenerInfo, int]]] = {}
+        # Event name -> [listener as registered, its calls and time so far].
+        self.called: dict[str, list[tuple[Listener, ListenerInfo]]] = {}
 
 
 @final
@@ -65,6 +64,13 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     It runs the listeners itself, so a listener receives this dispatcher. What
     it records grows until :meth:`reset`, which a long-running process calls
     between units of work.
+
+    Each listener's runs are timed, so :meth:`get_called_listeners` tells where
+    a slow dispatch spent its time. Wrapping an
+    :class:`~xtr_event_dispatcher.event_dispatcher.EventDispatcher`, it leaves
+    running the listeners to it and only watches each call; any other
+    dispatcher's listeners it runs itself, asking before each whether it is
+    still registered.
 
     :meth:`begin_unit` and :meth:`end_unit` open a trace scoped to the calling
     context, so overlapping units of work — concurrent requests — each record
@@ -98,16 +104,35 @@ class TraceableEventDispatcher(EventDispatcherInterface):
                 {"event": name},
             )
 
-        listeners = self._wrap(name)
+        if not self._dispatcher.has_listeners(name):
+            self._active().orphaned[name] = None
+            return event
+
+        if isinstance(self._dispatcher, EventDispatcher):
+            watch = _Watch(name, self._dispatcher)
+            try:
+                _ = await self._dispatcher.dispatch_through(
+                    event, name, dispatcher=self, call=watch
+                )
+            finally:
+                self._record(name, watch.listeners)
+            return event
+
+        listeners = [
+            WrappedListener(listener, self._dispatcher)
+            for listener in self._dispatcher.get_listeners(name)
+        ]
         try:
-            for index, listener in enumerate(listeners):
+            for listener in listeners:
                 if stoppable is not None and stoppable.is_propagation_stopped():
                     break
-                current = await self._current(name, listener)
-                if current is None:
+                # Removed since the dispatch began: skipped, as an untraced dispatch would.
+                if (
+                    self._dispatcher.get_listener_priority(name, listener.get_wrapped_listener())
+                    is None
+                ):
                     continue
-                listeners[index] = current
-                await current(event, name, self)
+                await listener(event, name, self)
         finally:
             self._record(name, listeners)
 
@@ -123,12 +148,8 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         _ = self._unit.set(None if unit is None else unit.outer)
 
     def get_called_listeners(self) -> list[ListenerInfo]:
-        """Describe every listener that ran since the last reset, with how often it ran."""
-        return [
-            replace(info, calls=calls)
-            for called in self._active().called.values()
-            for _, info, calls in called
-        ]
+        """Describe every listener that ran since the last reset, how often and for how long."""
+        return [info for called in self._active().called.values() for _, info in called]
 
     def get_not_called_listeners(self) -> list[ListenerInfo]:
         """Describe every registered listener that has not run for its event since the last reset.
@@ -138,7 +159,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         called_by_name = self._active().called
         not_called: list[ListenerInfo] = []
         for name, listeners in self._dispatcher.get_listeners().items():
-            called = [listener for listener, _, _ in called_by_name.get(name, ())]
+            called = [listener for listener, _ in called_by_name.get(name, ())]
             not_called.extend(
                 WrappedListener(listener, self._dispatcher).get_info(name)
                 for listener in listeners
@@ -216,35 +237,14 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         """Remove ``subscriber`` from the wrapped dispatcher."""
         self._dispatcher.remove_subscriber(subscriber)
 
-    async def _current(self, name: str, listener: WrappedListener) -> WrappedListener | None:
-        """Return what to run for ``listener`` now, as the wrapped dispatcher would.
-
-        ``None`` for one removed since the dispatch began. A lazy listener is
-        built through the wrapped dispatcher when it can, so what it built
-        replaces it there — the same as an untraced dispatch.
-        """
-        original = listener.get_wrapped_listener()
-        if self._dispatcher.get_listener_priority(name, original) is None:
-            return None
-        if isinstance(original, LazyListener) and isinstance(self._dispatcher, EventDispatcher):
-            built = await self._dispatcher.build_listener(name, original)
-            return None if built is None else WrappedListener(built, self._dispatcher)
-        return listener
-
-    def _wrap(self, name: str) -> list[WrappedListener]:
-        if not self._dispatcher.has_listeners(name):
-            self._active().orphaned[name] = None
-            return []
-
-        return [
-            WrappedListener(listener, self._dispatcher)
-            for listener in self._dispatcher.get_listeners(name)
-        ]
-
     def _record(self, name: str, listeners: list[WrappedListener]) -> None:
         skipped = False
         for listener in listeners:
-            context: dict[str, object] = {"event": name, "listener": listener.get_pretty()}
+            context: dict[str, object] = {
+                "event": name,
+                "listener": listener.get_pretty(),
+                "duration": listener.get_duration(),
+            }
             if listener.was_called():
                 self._log('Notified event "{event}" to listener "{listener}".', context)
                 self._count(name, listener)
@@ -259,13 +259,65 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     def _count(self, name: str, listener: WrappedListener) -> None:
         called = self._active().called.setdefault(name, [])
         original = listener.get_wrapped_listener()
-        for index, (seen, info, calls) in enumerate(called):
+        for index, (seen, info) in enumerate(called):
             if seen == original:
-                called[index] = (seen, info, calls + 1)
+                called[index] = (
+                    seen,
+                    replace(
+                        info, calls=info.calls + 1, duration=info.duration + listener.get_duration()
+                    ),
+                )
                 return
 
-        called.append((original, listener.get_info(name), 1))
+        called.append((original, listener.get_info(name, calls=1)))
 
     def _log(self, message: str, context: dict[str, object]) -> None:
         if self._logger is not None:
             self._logger.debug(message, context)
+
+
+@final
+class _Watch:
+    """Watches the calls an :class:`EventDispatcher` makes for one dispatch.
+
+    It holds a wrapper per listener, in the order the dispatcher runs them; a
+    call is matched to the next wrapper of the listener it names, so a
+    listener registered twice is told apart by position.
+    """
+
+    __slots__ = ("_dispatcher", "_name", "_next", "listeners")
+
+    def __init__(self, name: str, dispatcher: ListenerIntrospectionInterface) -> None:
+        self._name = name
+        self._dispatcher = dispatcher
+        self._next = 0
+        self.listeners = [
+            WrappedListener(listener, priority=priority)
+            for priority, listener in prioritized_listeners(dispatcher, name)
+        ]
+
+    async def __call__(
+        self,
+        registered: Listener,
+        listener: Listener,
+        arity: int,
+        arguments: tuple[object, ...],
+    ) -> None:
+        index = self._position(registered)
+        wrapped = self.listeners[index]
+        if listener is not registered:
+            # A lazy listener built just now: what it built is what ran.
+            priority = wrapped.get_info(self._name).priority
+            wrapped = self.listeners[index] = WrappedListener(listener, priority=priority)
+        await wrapped.run(arity, arguments)
+
+    def _position(self, registered: Listener) -> int:
+        for index in range(self._next, len(self.listeners)):
+            if self.listeners[index].get_wrapped_listener() is registered:
+                self._next = index + 1
+                return index
+
+        # Not among those the dispatch started with: watched all the same.
+        self.listeners.append(WrappedListener(registered, self._dispatcher))
+        self._next = len(self.listeners)
+        return self._next - 1

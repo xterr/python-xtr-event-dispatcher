@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 import subprocess
 import sys
+from dataclasses import replace
 from typing import final
 
 import anyio
@@ -10,9 +11,17 @@ import pytest
 from typing_extensions import override
 from xtr_logging_contracts import AbstractLogger, Context, LevelLike
 
+from tests.support.dispatchers import ReadOnlyDispatcher
 from tests.support.listeners import RecordingListener
 from tests.support.subscribers import Subscriber
-from xtr_event_dispatcher import Event, EventDispatcher, LazyListener
+from xtr_event_dispatcher import (
+    Event,
+    EventDispatcher,
+    ImmutableEventDispatcher,
+    LazyListener,
+    Listener,
+    ScopedEventDispatcher,
+)
 from xtr_event_dispatcher.debug import ListenerInfo, TraceableEventDispatcher
 
 pytestmark = pytest.mark.anyio
@@ -33,6 +42,11 @@ def _one(_event: object) -> None: ...
 
 
 def _two(_event: object) -> None: ...
+
+
+def _untimed(traced: TraceableEventDispatcher) -> list[ListenerInfo]:
+    """The called listeners, their measured time left out so they compare exactly."""
+    return [replace(info, duration=0.0) for info in traced.get_called_listeners()]
 
 
 @pytest.fixture
@@ -59,7 +73,152 @@ async def test_it_counts_each_listener_that_ran(
     _ = await traced.dispatch(Event(), "foo")
     _ = await traced.dispatch(Event(), "foo")
 
-    assert traced.get_called_listeners() == [ListenerInfo("foo", 5, f"{__name__}._one", 2)]
+    assert _untimed(traced) == [ListenerInfo("foo", 5, f"{__name__}._one", 2)]
+
+
+@final
+class _Clock:
+    """A clock reading one second later each time it is read."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        self.now += 1.0
+        return self.now
+
+
+async def test_it_times_each_listener_across_its_calls(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("xtr_event_dispatcher.debug.wrapped_listener.perf_counter", _Clock())
+    inner.add_listener("foo", _one)
+
+    _ = await traced.dispatch(Event(), "foo")
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert [(info.calls, info.duration) for info in traced.get_called_listeners()] == [(2, 2.0)]
+
+
+async def test_it_logs_how_long_a_listener_ran(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+    logger: _RecordingLogger,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("xtr_event_dispatcher.debug.wrapped_listener.perf_counter", _Clock())
+    inner.add_listener("foo", _one)
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert logger.records[0][1]["duration"] == 1.0
+
+
+@final
+class _CountingDispatcher(EventDispatcher):
+    def __init__(self) -> None:
+        super().__init__()
+        self.priority_reads = 0
+
+    @override
+    def get_listener_priority(self, event_name: str | type, listener: Listener) -> int | None:
+        self.priority_reads += 1
+        return super().get_listener_priority(event_name, listener)
+
+
+async def test_it_leaves_running_the_listeners_to_the_dispatcher_it_wraps() -> None:
+    inner = _CountingDispatcher()
+    for listener in (_one, _two, _one):
+        inner.add_listener("foo", listener)
+    traced = TraceableEventDispatcher(inner)
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert inner.priority_reads == 0
+    assert _untimed(traced) == [
+        ListenerInfo("foo", 0, f"{__name__}._one", 2),
+        ListenerInfo("foo", 0, f"{__name__}._two", 1),
+    ]
+
+
+async def test_a_scoped_dispatcher_is_traced_through_the_one_it_wraps(
+    inner: EventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    inner.add_listener("bar", _one)
+    scoped = ScopedEventDispatcher(inner)
+    scoped.add_listener("bar", _two, priority=-1)
+    traced = TraceableEventDispatcher(scoped)
+
+    _ = await traced.dispatch(Event(), "foo")
+    _ = await traced.dispatch(Event(), "bar")
+
+    assert _untimed(traced) == [
+        ListenerInfo("foo", 0, f"{__name__}._one", 1),
+        ListenerInfo("bar", 0, f"{__name__}._one", 1),
+        ListenerInfo("bar", -1, f"{__name__}._two", 1),
+    ]
+
+
+async def test_a_scoped_dispatcher_over_a_contracts_only_one_is_traced_listener_by_listener() -> (
+    None
+):
+    traced = TraceableEventDispatcher(
+        ScopedEventDispatcher(ReadOnlyDispatcher({"foo": [_one, _two]}))
+    )
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert [info.pretty for info in traced.get_called_listeners()] == [
+        f"{__name__}._one",
+        f"{__name__}._two",
+    ]
+
+
+async def test_a_lazy_listener_built_before_the_scope_copied_it_is_still_traced() -> None:
+    async def build() -> object:
+        return _one
+
+    lazy = LazyListener(build)
+    _ = await lazy.resolve()
+    traced = TraceableEventDispatcher(ScopedEventDispatcher(ReadOnlyDispatcher({"foo": [lazy]})))
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert [info.pretty for info in traced.get_called_listeners()] == [f"{__name__}._one"]
+
+
+async def test_any_other_dispatcher_has_its_listeners_run_by_the_trace(
+    inner: EventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    traced = TraceableEventDispatcher(ImmutableEventDispatcher(inner))
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+
+
+async def test_any_other_dispatcher_skips_a_listener_removed_during_the_dispatch(
+    inner: EventDispatcher,
+) -> None:
+    ran: list[str] = []
+
+    def second(_event: object) -> None:
+        ran.append("second")
+
+    def first(_event: object) -> None:
+        inner.remove_listener("foo", second)
+
+    inner.add_listener("foo", first, 1)
+    inner.add_listener("foo", second)
+    traced = TraceableEventDispatcher(ImmutableEventDispatcher(inner))
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert ran == []
 
 
 async def test_it_lists_the_listeners_that_did_not_run(
@@ -117,7 +276,8 @@ async def test_it_logs_who_ran_who_stopped_and_who_was_skipped(
         'Listener "{listener}" stopped propagation of the event "{event}".',
         'Listener "{listener}" was not called for event "{event}".',
     ]
-    assert logger.records[2][1] == {"event": "foo", "listener": f"{__name__}._two"}
+    assert logger.records[2][1]["event"] == "foo"
+    assert logger.records[2][1]["listener"] == f"{__name__}._two"
 
 
 async def test_it_logs_an_event_already_stopped(
@@ -260,7 +420,7 @@ async def test_reset_inside_a_unit_clears_only_the_units_trace(
 
     traced.end_unit()
 
-    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
 
 
 async def test_recording_returns_to_the_instance_after_the_unit_ends(
@@ -277,7 +437,7 @@ async def test_recording_returns_to_the_instance_after_the_unit_ends(
 
     _ = await traced.dispatch(Event(), "foo")
 
-    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
 
 
 async def test_a_copied_context_records_into_the_unit_it_still_points_at(
@@ -300,7 +460,7 @@ async def test_a_copied_context_records_into_the_unit_it_still_points_at(
     except StopIteration:
         pass
 
-    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
 
     traced.end_unit()
 
@@ -313,7 +473,7 @@ async def test_a_unit_only_exists_while_it_is_open(
 
     traced.begin_unit()
     _ = await traced.dispatch(Event(), "foo")
-    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
     traced.begin_unit()
 
     assert traced.get_called_listeners() == []
@@ -332,7 +492,7 @@ async def test_ending_a_nested_unit_returns_to_the_outer_one(
     traced.begin_unit()
     traced.end_unit()
 
-    assert traced.get_called_listeners() == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
 
     traced.end_unit()
 

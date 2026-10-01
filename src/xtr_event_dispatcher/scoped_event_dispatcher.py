@@ -13,6 +13,7 @@ from .event_dispatcher import EventDispatcher
 if TYPE_CHECKING:
     from xtr_event_dispatcher_contracts import Listener
 
+    from .event_dispatcher import ListenerCall
     from .introspectable_dispatcher_interface import IntrospectableDispatcherInterface
 
 __all__ = ["ScopedEventDispatcher"]
@@ -54,6 +55,31 @@ class ScopedEventDispatcher(EventDispatcher):
             return await super().dispatch(event, name)
 
         return await self._dispatcher.dispatch(event, name)
+
+    @override
+    async def dispatch_through(
+        self,
+        event: _EventT,
+        event_name: str | type | None = None,
+        *,
+        dispatcher: object,
+        call: ListenerCall,
+    ) -> _EventT:
+        """Dispatch through ``call`` here, or through the wrapped dispatcher when it can.
+
+        A wrapped dispatcher that cannot run its listeners through ``call`` —
+        one written against the contracts alone — has the event's listeners
+        copied here first, as adding one here would.
+        """
+        name = event_name_of(type(event) if event_name is None else event_name)
+        if not super().has_listeners(name):
+            if isinstance(self._dispatcher, EventDispatcher):
+                return await self._dispatcher.dispatch_through(
+                    event, name, dispatcher=dispatcher, call=call
+                )
+            self._merge(name)
+
+        return await super().dispatch_through(event, name, dispatcher=dispatcher, call=call)
 
     @override
     def add_listener(self, event_name: str | type, listener: Listener, priority: int = 0) -> None:

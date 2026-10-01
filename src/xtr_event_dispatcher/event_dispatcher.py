@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar, overload
+from typing import TYPE_CHECKING, TypeAlias, TypeVar, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
@@ -16,13 +16,22 @@ from .exception import InvalidSubscriberError
 from .lazy_listener import LazyListener
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from xtr_event_dispatcher_contracts import Listener
 
     from .event_subscriber_interface import EventSubscriberInterface
 
-__all__ = ["EventDispatcher"]
+__all__ = ["EventDispatcher", "ListenerCall"]
 
 _EventT = TypeVar("_EventT")
+
+ListenerCall: TypeAlias = "Callable[[Listener, Listener, int, tuple[object, ...]], Awaitable[None]]"
+"""Runs one listener for :meth:`EventDispatcher.dispatch_through`.
+
+Given the listener as registered, what runs — the same, or what a lazy
+listener built into — how many of the arguments it takes, and the arguments.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,9 +97,33 @@ class EventDispatcher(EventDispatcherInterface):
         See the contract's
         :meth:`~xtr_event_dispatcher_contracts.event_dispatcher_interface.EventDispatcherInterface.dispatch`.
         """
+        return await self.dispatch_through(event, event_name, dispatcher=self, call=_call)
+
+    async def dispatch_through(
+        self,
+        event: _EventT,
+        event_name: str | type | None = None,
+        *,
+        dispatcher: object,
+        call: ListenerCall,
+    ) -> _EventT:
+        """Dispatch as :meth:`dispatch` does, running each listener through ``call``.
+
+        For a dispatcher wrapping this one that must see every call — the
+        traceable one times them — without running the listeners itself:
+        which ones run, and in which order, stays this dispatcher's decision.
+
+        Args:
+            event: What happened.
+            event_name: The name to dispatch under; the event's class when
+                ``None``.
+            dispatcher: What listeners receive as the dispatcher — the
+                wrapping one.
+            call: Runs one listener; see :data:`ListenerCall`.
+        """
         name = event_name_of(type(event) if event_name is None else event_name)
         stoppable = event if isinstance(event, StoppableEventInterface) else None
-        arguments = (event, name, self)
+        arguments = (event, name, dispatcher)
 
         # A snapshot: a listener added while this dispatch runs waits for the next one.
         # One removed meanwhile is skipped, so a listener can unsubscribe another at once.
@@ -113,7 +146,7 @@ class EventDispatcher(EventDispatcherInterface):
                 else entry
             )
             if runnable is not None:
-                await call_listener(runnable.listener, runnable.arity, arguments)
+                await call(listener, runnable.listener, runnable.arity, arguments)
 
         return event
 
@@ -240,26 +273,6 @@ class EventDispatcher(EventDispatcherInterface):
             for entry in by_priority[priority]
         ]
 
-    async def build_listener(
-        self, event_name: str | type, listener: LazyListener
-    ) -> Listener | None:
-        """Build ``listener``, a lazy listener of the event, and put what it built in its place.
-
-        What a dispatch reaching it does — for a dispatcher that runs this
-        one's listeners itself, as the traceable one does, so the lazy
-        listener is replaced there too.
-
-        Returns:
-            What to run: the built listener, or ``None`` when ``listener`` is
-            no longer registered for the event or a pending removal drops it.
-        """
-        name = event_name_of(event_name)
-        for entry in self._sort(name):
-            if entry.listener is listener:
-                built = await self._build(name, entry, listener)
-                return None if built is None else built.listener
-        return None
-
     def _sort(self, name: str) -> list[_Entry]:
         """Return the event's entries in running order, sorted once until they change."""
         cached = self._sorted.get(name)
@@ -354,6 +367,14 @@ def _same(registered: Listener, listener: Listener) -> bool:
         return listener.resolved is not None and listener.resolved == registered
 
     return False
+
+
+async def _call(
+    registered: Listener, listener: Listener, arity: int, arguments: tuple[object, ...]
+) -> None:
+    """Run ``listener`` as a dispatcher on its own does."""
+    del registered
+    await call_listener(listener, arity, arguments)
 
 
 def _is_unbuilt(listener: Listener) -> bool:

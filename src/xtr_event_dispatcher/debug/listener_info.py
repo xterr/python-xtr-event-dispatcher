@@ -19,9 +19,11 @@ class ListenerInfo:
             function's qualified name.
         calls: How many times it ran since the last reset; ``0`` for one
             that never did.
+        duration: How long it ran, in seconds, all those calls together.
     """
 
     event: str
     priority: int | None
     pretty: str
     calls: int = 0
+    duration: float = 0.0

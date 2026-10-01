@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import perf_counter
 from typing import TYPE_CHECKING, ClassVar, final
 
 from xtr_event_dispatcher_contracts import StoppableEventInterface
@@ -20,8 +21,9 @@ __all__ = ["WrappedListener"]
 
 @final
 class WrappedListener:
-    """Runs a listener as a dispatcher would, remembering whether it ran and stopped the event.
+    """Runs a listener as a dispatcher would, remembering how the run went.
 
+    Whether it ran, for how long, and whether the event was stopped after it.
     One is made per listener per dispatch, so what it remembers is about that
     dispatch alone.
     """
@@ -30,6 +32,7 @@ class WrappedListener:
         "_arity",
         "_called",
         "_dispatcher",
+        "_duration",
         "_listener",
         "_priority",
         "_stopped_propagation",
@@ -51,9 +54,12 @@ class WrappedListener:
         self._listener = listener
         self._dispatcher = dispatcher
         self._priority = priority
-        self._arity = positional_arity(listener)
+        # Read when the listener first runs here: one a dispatcher runs through
+        # :meth:`run` is handed what it takes, and one never run is never read.
+        self._arity: int | None = None
         self._called = False
         self._stopped_propagation = False
+        self._duration = 0.0
 
     def get_wrapped_listener(self) -> Listener:
         """Return the listener as it was registered."""
@@ -67,6 +73,10 @@ class WrappedListener:
         """Tell whether the event was stopped once the listener had run."""
         return self._stopped_propagation
 
+    def get_duration(self) -> float:
+        """Return how long the listener ran, in seconds; ``0.0`` when it did not."""
+        return self._duration
+
     def get_pretty(self) -> str:
         """Return a readable name for the listener."""
         return _pretty_name(self._listener)
@@ -76,14 +86,28 @@ class WrappedListener:
         if self._priority is None and self._dispatcher is not None:
             self._priority = self._dispatcher.get_listener_priority(event_name, self._listener)
 
-        return ListenerInfo(event_name, self._priority, self.get_pretty(), calls)
+        return ListenerInfo(event_name, self._priority, self.get_pretty(), calls, self._duration)
+
+    async def run(self, arity: int, arguments: tuple[object, ...]) -> None:
+        """Run the listener with the first ``arity`` arguments, timing it and noting the outcome.
+
+        ``arguments`` are the event, its name and the dispatcher.
+        """
+        self._called = True
+        started = perf_counter()
+        try:
+            await call_listener(self._listener, arity, arguments)
+        finally:
+            self._duration += perf_counter() - started
+        event = arguments[0]
+        if isinstance(event, StoppableEventInterface) and event.is_propagation_stopped():
+            self._stopped_propagation = True
 
     async def __call__(self, event: object, event_name: str, dispatcher: object) -> None:
         """Run the listener with what it takes of the three arguments, and note the outcome."""
-        self._called = True
-        await call_listener(self._listener, self._arity, (event, event_name, dispatcher))
-        if isinstance(event, StoppableEventInterface) and event.is_propagation_stopped():
-            self._stopped_propagation = True
+        if self._arity is None:
+            self._arity = positional_arity(self._listener)
+        await self.run(self._arity, (event, event_name, dispatcher))
 
 
 def _pretty_name(listener: Listener) -> str:
