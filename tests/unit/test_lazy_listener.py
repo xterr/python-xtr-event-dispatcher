@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import final
+from typing import TYPE_CHECKING, final
 
 import pytest
 
 from tests.support.listeners import DispatcherRecorder
 from xtr_event_dispatcher import Event, LazyListener
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @final
@@ -68,6 +71,28 @@ async def test_calling_it_calls_the_built_listener_with_what_it_takes() -> None:
     await LazyListener(factory)(event, "name", object())
 
     assert received == [event]
+
+
+@pytest.mark.anyio
+async def test_the_built_listener_signature_is_read_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    reads: list[object] = []
+
+    def counting(listener: Callable[..., object]) -> int:
+        reads.append(listener)
+        return 1
+
+    monkeypatch.setattr("xtr_event_dispatcher.lazy_listener.positional_arity", counting)
+    received: list[object] = []
+
+    async def factory() -> object:
+        return received.append
+
+    lazy = LazyListener(factory)
+    await lazy(Event(), "name", object())
+    await lazy(Event(), "name", object())
+
+    assert len(reads) == 1
+    assert len(received) == 2
 
 
 def test_its_representation_names_the_factory_and_the_method() -> None:

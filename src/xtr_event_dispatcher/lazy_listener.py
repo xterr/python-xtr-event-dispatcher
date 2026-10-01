@@ -40,8 +40,9 @@ class LazyListener:
     factory should hand out a shared object, as a container does.
     """
 
-    __slots__: ClassVar[tuple[str, ...]] = ("_factory", "_method", "_resolved")
+    __slots__: ClassVar[tuple[str, ...]] = ("_arity", "_factory", "_method", "_resolved")
 
+    _arity: int
     _factory: Callable[[], Awaitable[object]]
     _method: str
     _resolved: Listener | None
@@ -57,6 +58,8 @@ class LazyListener:
         self._factory = factory
         self._method = method
         self._resolved = None
+        # Read once the listener is built: a built listener keeps its signature.
+        self._arity = 0
 
     @property
     def method(self) -> str:
@@ -77,10 +80,12 @@ class LazyListener:
         if self._resolved is None:
             built = await self._factory()
             if self._resolved is None:
-                self._resolved = cast(
+                resolved = cast(
                     "Listener",
                     built if self._method == _CALL else getattr(built, self._method),
                 )
+                self._arity = positional_arity(resolved)
+                self._resolved = resolved
 
         return self._resolved
 
@@ -91,7 +96,7 @@ class LazyListener:
         as the built listener takes.
         """
         listener = await self.resolve()
-        await call_listener(listener, positional_arity(listener), arguments)
+        await call_listener(listener, self._arity, arguments)
 
     @override
     def __repr__(self) -> str:
