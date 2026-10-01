@@ -124,11 +124,30 @@ Naming a dispatcher that is not in `dispatchers` raises `InvalidListenerError` a
 A bundle registering a listener without the decorator uses the same tags:
 
 ```python
-services.set(Stock).add_tag("event_dispatcher.listener", event=OrderPlaced, method="reserve")
-services.set(Audit).add_tag("event_dispatcher.subscriber", dispatcher="audit")
+from xtr_event_dispatcher.bundle import LISTENER_TAG, SUBSCRIBER_TAG
+
+services.set(Stock).add_tag(LISTENER_TAG, event=OrderPlaced, method="reserve")
+services.set(Audit).add_tag(SUBSCRIBER_TAG, dispatcher="audit")
 ```
 
-The tag attributes are the decorator's arguments.
+The tag attributes are the decorator's arguments. `RegisterListenersPass` reads the tags after
+every bundle's `process` hook, so a bundle may tag a listener from `load_extension` or `process`.
+
+## A dispatcher another bundle owns
+
+A dispatcher is any service tagged `DISPATCHER_TAG`, registered as `EventDispatcherInterface`
+under its name. A bundle owning one registers it with `event_dispatcher_factory`; every listener
+naming it joins it, and it is injected by name:
+
+```python
+from xtr_event_dispatcher.bundle import DISPATCHER_TAG, event_dispatcher_factory
+
+services.set(event_dispatcher_factory("mailer"), qualifier="mailer").add_tag(DISPATCHER_TAG)
+```
+
+The security bundle owns one per firewall, named by `firewall_dispatcher_name("api")` from
+`xtr_security.bundle`: `@as_event_listener(dispatcher=firewall_dispatcher_name("api"))` hears that
+firewall alone, while a listener on the main dispatcher hears every firewall's security events.
 
 ## Event aliases
 
@@ -139,10 +158,13 @@ really listens to, so a library can offer a short name for one of its events:
 EventDispatcherConfig(event_aliases={"order.placed": OrderPlaced})
 ```
 
-Another bundle contributes aliases from its own `prepend_extension` hook:
+Another bundle contributes aliases from its own `prepend_extension` hook. An alias the
+application already maps keeps its event:
 
 ```python
-builder.prepend_extension_config("event_dispatcher", {"event_aliases": {...}})
+builder.prepend_extension_config(
+    EventDispatcherConfig, lambda c: c.with_event_aliases({"order.placed": OrderPlaced})
+)
 ```
 
 ## Tracing in debug mode
@@ -152,6 +174,15 @@ Then every dispatcher is decorated with a `TraceableEventDispatcher`, reset betw
 work through the `kernel.reset` tag; with the logging bundle active it writes to the `"event"`
 channel (`EVENT_CHANNEL` in `xtr_event_dispatcher.bundle`). Set `trace=False` to turn it off in
 debug, `trace=True` to keep it in production.
+
+## Listing the listeners
+
+With the `console` extra and a console bundle active, debug mode has
+`debug:event-dispatcher`: every event's listeners in running order, with priorities.
+`debug:event-dispatcher OrderPlaced` shows the events whose name contains the text,
+`--dispatcher audit` reads a named dispatcher — another bundle's included — and `--format`
+writes `txt`, `json`, `md` or `xml`. A listener service not built yet shows as its
+`LazyListener`. The command is not registered outside debug mode.
 
 ## The container's dispatcher cannot be changed
 

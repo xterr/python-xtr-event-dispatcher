@@ -151,7 +151,7 @@ A listener receives the dispatcher that ran it — the scoped, compiled or trace
 but the *wrapped* one through an `ImmutableEventDispatcher`.
 
 `TraceableEventDispatcher` answers `get_called_listeners()`, `get_not_called_listeners()` (both
-lists of `ListenerInfo`: `.event`, `.priority`, `.pretty`, `.calls`) and
+lists of `ListenerInfo`: `.event`, `.priority`, `.pretty`, `.calls`, `.duration` in seconds) and
 `get_orphaned_events()`; `reset()` clears it, and `begin_unit()` / `end_unit()` keep
 overlapping units of work out of each other's trace.
 
@@ -167,6 +167,7 @@ rather than redefining them, so both sides name the same objects. Full example i
 | --- | --- |
 | `xtr_event_dispatcher_contracts.EventDispatcherInterface` | You only `dispatch`. |
 | `xtr_event_dispatcher_contracts.ListenerIntrospectionInterface` | You only read listeners. |
+| `xtr_event_dispatcher.IntrospectableDispatcherInterface` | You dispatch and read listeners, never register — what `ImmutableEventDispatcher` and `ScopedEventDispatcher` wrap. |
 | `xtr_event_dispatcher.EventDispatcherInterface` | You also register listeners — it extends both of the above. |
 
 ## Testing
@@ -197,7 +198,8 @@ async def test_the_worker_announces_what_it_consumed() -> None:
 
 ## Use in an application
 
-1. **Install** — `uv add "xtr-event-dispatcher[di]"`.
+1. **Install** — `uv add "xtr-event-dispatcher[di]"`; add the `console` extra for
+   `debug:event-dispatcher` in debug mode.
 2. **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`
    (`from xtr_event_dispatcher.bundle import EventDispatcherBundle`). Nothing to do when the
    messenger or scheduler bundle is listed: both require it when it is installed.
@@ -245,7 +247,8 @@ async def test_the_worker_announces_what_it_consumed() -> None:
    [references/bundle.md](references/bundle.md) for every argument, ordering with
    `before`/`after`, named dispatchers, tagging a service by hand, and which classes the scan
    picks up.
-7. **Check** — `debug:bundles` shows `event_dispatcher` as `listed` or `required`, and `active`.
+7. **Check** — `debug:bundles` shows `event_dispatcher` as `listed` or `required`, and `active`;
+   in debug mode, `debug:event-dispatcher` lists every listener, in running order.
 8. **Remove** — drop the `BUNDLES` entry and every `@as_event_listener`, delete
    `<app>/config/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
 

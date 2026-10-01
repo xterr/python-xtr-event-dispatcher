@@ -41,6 +41,7 @@ With a container:
 
 ```sh
 uv add "xtr-event-dispatcher[di]"
+uv add "xtr-event-dispatcher[di,console]"  # + debug:event-dispatcher, in debug mode
 ```
 
 A library that only *dispatches* events depends on
@@ -151,10 +152,19 @@ stops the event — and what it built is kept. Until then `get_listeners` return
 | `ImmutableEventDispatcher(dispatcher)` | Hand a dispatcher out for dispatching only: every change raises `BadMethodCallError`. |
 | `ScopedEventDispatcher(dispatcher)` | Listeners for one scope — a request, a command, a test — next to those of a shared dispatcher, which is left as it is. They interleave by priority. |
 | `CompiledEventDispatcher(listeners)` | Listeners fixed when it is built, then refusing every change. What the container builds. |
-| `debug.TraceableEventDispatcher(dispatcher, logger=None)` | Records which listeners ran and how often, which did not, and which events nobody heard; `reset()` between units of work. |
+| `debug.TraceableEventDispatcher(dispatcher, logger=None)` | Records which listeners ran, how often and for how long, which did not, and which events nobody heard; `reset()` between units of work. |
 
 A listener receives the dispatcher that ran it: the scoped, compiled or traceable one itself, but
 the wrapped one through an `ImmutableEventDispatcher`, which dispatches by delegating.
+
+A `TraceableEventDispatcher` times every listener: each `ListenerInfo` of
+`get_called_listeners()` carries its `calls` and their total `duration`, in seconds, and every
+"Notified" debug record a `duration`. Wrapping an `EventDispatcher` — the container's always
+are — it leaves running the listeners to it and only watches each call.
+
+`ImmutableEventDispatcher` and `ScopedEventDispatcher` wrap an `IntrospectableDispatcherInterface`:
+a dispatcher that dispatches and reads its listeners, nothing more — so one written against the
+contracts alone can be wrapped too.
 
 ### A trace per unit of work
 
@@ -177,7 +187,8 @@ them alone otherwise.
 Everything adding this package to an application on
 [xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what removing it undoes.
 
-- **Install** — `uv add "xtr-event-dispatcher[di]"`.
+- **Install** — `uv add "xtr-event-dispatcher[di]"`; `console` adds `debug:event-dispatcher`,
+  registered in debug mode only.
 - **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`,
   imported from `xtr_event_dispatcher.bundle`. The messenger and scheduler bundles require it
   when it is installed.
@@ -191,7 +202,7 @@ Everything adding this package to an application on
 - **Remove** — drop the `BUNDLES` entry and every `@as_event_listener`, delete
   `<app>/config/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
 - **Check** — `debug:bundles` shows `event_dispatcher` as `listed` or `required`, and
-  `active`.
+  `active`; in debug mode, `debug:event-dispatcher` lists every listener the scan found.
 
 ## Kernel / bundle
 
@@ -264,9 +275,30 @@ one scope, wrap it: `ScopedEventDispatcher(dispatcher)`.
 A bundle tags a service by hand the way the decorator does:
 
 ```python
-services.set(Stock).add_tag("event_dispatcher.listener", event=OrderPlaced, method="reserve")
-services.set(Audit).add_tag("event_dispatcher.subscriber", dispatcher="audit")
+from xtr_event_dispatcher.bundle import LISTENER_TAG, SUBSCRIBER_TAG
+
+services.set(Stock).add_tag(LISTENER_TAG, event=OrderPlaced, method="reserve")
+services.set(Audit).add_tag(SUBSCRIBER_TAG, dispatcher="audit")
 ```
+
+`RegisterListenersPass` reads both tags and the decorated functions, and hands every dispatcher
+its listeners. It runs after every bundle's `process` hook, so a bundle may tag a listener there
+too.
+
+A dispatcher is any service tagged `DISPATCHER_TAG`: the bundle's own, and those another bundle
+owns. Register one under its name, and every listener naming that dispatcher joins it — it is
+then injected by name like the configured ones:
+
+```python
+from xtr_event_dispatcher.bundle import DISPATCHER_TAG, event_dispatcher_factory
+
+services.set(event_dispatcher_factory("mailer"), qualifier="mailer").add_tag(DISPATCHER_TAG)
+```
+
+The security bundle registers one per firewall this way. The listeners `RegisterListenersPass`
+worked out are the dispatcher's `ListenerMap`; `ListenerMap.with_listeners_of(other, events)`
+gives one dispatcher another's listeners of some events, as the security bundle gives each
+firewall the main dispatcher's security listeners.
 
 ### Configuration
 
@@ -281,12 +313,34 @@ def events() -> EventDispatcherConfig:
     )
 ```
 
-Another bundle adds aliases with `builder.prepend_extension_config("event_dispatcher", ...)`.
+Another bundle offers names for its events from its `prepend_extension` hook; an alias the
+application already maps keeps its event:
+
+```python
+builder.prepend_extension_config(
+    EventDispatcherConfig, lambda c: c.with_event_aliases({"order.placed": OrderPlaced})
+)
+```
 
 In debug mode every dispatcher is wrapped in a `TraceableEventDispatcher`, reset between units of
-work (`kernel.reset`); with the logging bundle active it writes to the `"event"` channel.
+work (`kernel.reset`); with the logging bundle active it writes to the `"event"` channel. A bundle
+owning a dispatcher traces it the same way with `traceable_event_dispatcher_factory`.
 
 The bundle's zero-config path builds an empty dispatcher and does no I/O.
+
+### `debug:event-dispatcher`
+
+With a console bundle active, debug mode gets a command listing each event's listeners in the
+order they run, with their priorities — of any dispatcher, another bundle's included:
+
+```sh
+app debug:event-dispatcher                      # every event of the default dispatcher
+app debug:event-dispatcher OrderPlaced          # the event named, or every event containing it
+app debug:event-dispatcher --dispatcher audit   # a named dispatcher
+app debug:event-dispatcher --format json        # txt, json, md or xml
+```
+
+A listener service not built yet shows as its `LazyListener`.
 
 ## Errors
 
