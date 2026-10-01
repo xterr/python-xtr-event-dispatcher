@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from xtr_event_dispatcher_contracts import event_name_of
 
@@ -29,8 +29,8 @@ class EventDispatcherConfig:
     Attributes:
         event_aliases: Event names — or classes — that listeners declare,
             mapped to the event they really listen to. Lets a library offer
-            a short name for one of its events, and lets another bundle add
-            its own with ``prepend_extension_config``.
+            a short name for one of its events; another bundle adds its own
+            with :meth:`with_event_aliases`.
         dispatchers: Dispatchers besides the default one, each registered
             under its name as the qualifier. A listener joins one with
             ``@as_event_listener(dispatcher="audit")``.
@@ -66,3 +66,25 @@ class EventDispatcherConfig:
         """Return the event aliases with every class replaced by its event name."""
         aliases = self.event_aliases.items()
         return {event_name_of(alias): event_name_of(event) for alias, event in aliases}
+
+    def with_event_aliases(self, aliases: Mapping[str | type, str | type]) -> EventDispatcherConfig:
+        """Return a copy that maps ``aliases`` as well.
+
+        An alias already mapped keeps its event — the application's choice
+        stands — and a copy with nothing to add is this very config. This is
+        how a bundle offers names for its events from ``prepend_extension``::
+
+            builder.prepend_extension_config(
+                EventDispatcherConfig, lambda c: c.with_event_aliases({"order.placed": OrderPlaced})
+            )
+
+        Raises:
+            InvalidArgumentError: When an alias or its event is not a name.
+        """
+        added = {
+            alias: event for alias, event in aliases.items() if alias not in self.event_aliases
+        }
+        if not added:
+            return self
+
+        return replace(self, event_aliases={**self.event_aliases, **added})
