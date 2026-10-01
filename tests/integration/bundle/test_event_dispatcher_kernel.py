@@ -200,7 +200,7 @@ async def test_a_listener_declaring_no_event_fails_the_build() -> None:
 
 
 async def test_a_listener_on_an_unconfigured_dispatcher_fails_the_build() -> None:
-    with pytest.raises(InvalidListenerError, match="'nowhere', which is not configured"):
+    with pytest.raises(InvalidListenerError, match="'nowhere', which does not exist"):
         _ = await _invalid("unknown_dispatcher").boot()
 
 

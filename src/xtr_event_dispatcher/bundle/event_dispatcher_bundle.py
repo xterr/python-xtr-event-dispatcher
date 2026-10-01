@@ -18,43 +18,37 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterable
-from typing import Annotated, cast, final
+from typing import cast, final
 
 from typing_extensions import override
 from xtr_dependency_injection import (
-    AutowireDecorated,
     Bundle,
     ContainerBuilder,
+    PassStage,
     ServiceConfigurator,
-    Target,
     as_bundle,
     bundle_active,
     required_bundle,
 )
-from xtr_event_dispatcher_contracts import EventDispatcherInterface as DispatcherContract
-from xtr_event_dispatcher_contracts import ListenerIntrospectionInterface
-from xtr_logging_contracts import LoggerInterface
-from xtr_service_contracts import ContainerInterface
+from xtr_dependency_injection.kernel.kernel import BUNDLE_PASS_PRIORITY
 
-from xtr_event_dispatcher.compiled_event_dispatcher import CompiledEventDispatcher
-from xtr_event_dispatcher.debug.traceable_event_dispatcher import TraceableEventDispatcher
 from xtr_event_dispatcher.decorator.event_listener_declaration import (
     EventListenerDeclaration,
     listeners_declared_on,
 )
 from xtr_event_dispatcher.event_dispatcher_interface import EventDispatcherInterface
 from xtr_event_dispatcher.event_subscriber_interface import EventSubscriberInterface
-from xtr_event_dispatcher.exception import InvalidListenerError
 
-from ._declared_listeners import LISTENER_TAG, SUBSCRIBER_TAG, DeclaredListener, declared_listeners
-from ._listener_ordering import ordered
-from ._listener_reference import ListenerMap
+from ._declared_listeners import DISPATCHER_TAG, LISTENER_TAG, SUBSCRIBER_TAG
 from .event_dispatcher_config import EventDispatcherConfig
+from .event_dispatcher_factory import (
+    EVENT_CHANNEL,
+    event_dispatcher_factory,
+    traceable_event_dispatcher_factory,
+)
+from .register_listeners_pass import RegisterListenersPass
 
-__all__ = ["EVENT_CHANNEL", "EventDispatcherBundle"]
-
-EVENT_CHANNEL = "event"
-"""The logging channel a traced dispatcher writes to."""
+__all__ = ["EventDispatcherBundle"]
 
 
 @final
@@ -76,7 +70,11 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
 
     @override
     def build(self, builder: ContainerBuilder) -> None:
-        """Register declared listeners and subscribers found by the scan."""
+        """Register the listeners and subscribers the scan finds, and the pass handing them over.
+
+        The pass runs after every bundle's ``process`` hook, so a listener a
+        bundle tags there joins its dispatcher too.
+        """
         functions = self._functions
 
         def register_listener(
@@ -100,6 +98,11 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
         builder.register_attribute_for_autoconfiguration(listeners_declared_on, register_listener)
         builder.register_attribute_for_autoconfiguration(_subscribers_in, register_subscriber)
         _ = builder.register_for_autoconfiguration(EventSubscriberInterface).add_tag(SUBSCRIBER_TAG)
+        builder.add_compiler_pass(
+            RegisterListenersPass(functions),
+            stage=PassStage.BEFORE_OPTIMIZATION,
+            priority=BUNDLE_PASS_PRIORITY,
+        )
 
     @override
     def load_extension(
@@ -110,54 +113,17 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
     ) -> None:
         """Register a dispatcher per name, traced in debug mode."""
         self._config = config
-        trace = (
-            config.trace
-            if config.trace is not None
-            else bool(builder.get_parameter("kernel.debug"))
-        )
-        traceable = _logged_traceable if bundle_active(builder, "logging") else _traceable
+        debug = bool(builder.get_parameter("kernel.debug"))
+        trace = config.trace if config.trace is not None else debug
+        traceable = traceable_event_dispatcher_factory(logged=bundle_active(builder, "logging"))
         for name in (None, *config.dispatchers):
-            _ = services.set(_dispatcher_factory(name), qualifier=name).set_argument(
-                "listeners", {}
-            )
-            for alias in (DispatcherContract, ListenerIntrospectionInterface):
-                services.alias(
-                    alias,
-                    EventDispatcherInterface,
-                    alias_qualifier=name,
-                    target_qualifier=name,
-                )
+            _ = services.set(event_dispatcher_factory(name), qualifier=name).add_tag(DISPATCHER_TAG)
             if trace:
                 _ = (
                     services.set(traceable, qualifier=name)
                     .set_decorated_service(EventDispatcherInterface, qualifier=name)
                     .add_tag("kernel.reset", method="reset")
                 )
-
-    @override
-    def process(self, builder: ContainerBuilder) -> None:
-        """Hand every dispatcher its listeners, in the order they run."""
-        names = (None, *self._config.dispatchers)
-        by_dispatcher: dict[str | None, dict[str, list[DeclaredListener]]] = {
-            name: {} for name in names
-        }
-        for listener in declared_listeners(builder, self._functions, self._config.aliases()):
-            events = by_dispatcher.get(listener.dispatcher)
-            if events is None:
-                raise InvalidListenerError(
-                    listener.label,
-                    f"it listens on the dispatcher {listener.dispatcher!r}, which is not "
-                    f"configured: add it to EventDispatcherConfig.dispatchers",
-                )
-            events.setdefault(listener.event_name, []).append(listener)
-
-        for name, events in by_dispatcher.items():
-            listeners = ListenerMap(
-                {event: ordered(event, group) for event, group in events.items()}
-            )
-            _ = builder.get_definition(EventDispatcherInterface, name).set_argument(
-                "listeners", listeners
-            )
 
     @override
     async def boot(self) -> None:
@@ -169,47 +135,6 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
 
         for name in (None, *self._config.dispatchers):
             _ = await container.get(EventDispatcherInterface, name)
-
-
-def _dispatcher_factory(name: str | None) -> Callable[..., EventDispatcherInterface]:
-    """Build the factory of the dispatcher named ``name``, the default one for ``None``.
-
-    One function per dispatcher, so each carries its own name in the
-    container's report.
-    """
-
-    def event_dispatcher(
-        listeners: ListenerMap, container: ContainerInterface
-    ) -> EventDispatcherInterface:
-        return CompiledEventDispatcher(
-            {
-                event: [
-                    (reference.listener(container), priority) for priority, reference in references
-                ]
-                for event, references in listeners.by_event.items()
-            },
-        )
-
-    if name is not None:
-        event_dispatcher.__name__ = f"event_dispatcher_{name}"
-        event_dispatcher.__qualname__ = event_dispatcher.__name__
-
-    return event_dispatcher
-
-
-def _traceable(
-    dispatcher: Annotated[EventDispatcherInterface, AutowireDecorated()],
-) -> TraceableEventDispatcher:
-    """Trace ``dispatcher`` without logging."""
-    return TraceableEventDispatcher(dispatcher)
-
-
-def _logged_traceable(
-    dispatcher: Annotated[EventDispatcherInterface, AutowireDecorated()],
-    logger: Annotated[LoggerInterface, Target(EVENT_CHANNEL)],
-) -> TraceableEventDispatcher:
-    """Trace ``dispatcher``, writing to the ``"event"`` channel."""
-    return TraceableEventDispatcher(dispatcher, logger)
 
 
 def _tag_attributes(declaration: EventListenerDeclaration) -> dict[str, object]:

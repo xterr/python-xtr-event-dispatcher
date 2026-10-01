@@ -26,7 +26,6 @@ __all__ = [
     "default_method",
     "events_of",
     "function_of",
-    "function_of_or_none",
     "own_arity",
 ]
 
@@ -40,7 +39,7 @@ def default_method(owner: type, event: str | type) -> str:
     method = "on_" + re.sub(r"[^0-9A-Za-z]+", "_", snake).strip("_").lower()
     if inspect.getattr_static(owner, method, None) is not None:
         return method
-    if function_of_or_none(owner, CALL) is not None:
+    if function_of(owner, CALL) is not None:
         return CALL
 
     raise InvalidListenerError(
@@ -54,7 +53,7 @@ def check_method(owner: type, method: str, label: str) -> None:
     """Refuse a method the class lacks, or one no dispatcher can call."""
     if not callable(getattr(owner, method, None)):
         raise InvalidListenerError(label, f"{owner.__qualname__} has no method {method!r}")
-    found = function_of_or_none(owner, method)
+    found = function_of(owner, method)
     if found is None:
         return
 
@@ -66,19 +65,7 @@ def check_method(owner: type, method: str, label: str) -> None:
         raise InvalidListenerError(label, str(error)) from error
 
 
-def function_of(owner: type, method: str) -> tuple[Callable[..., object], bool]:
-    """Return the function behind ``method``, and whether its first parameter is bound."""
-    found = function_of_or_none(owner, method)
-    if found is None:
-        raise InvalidListenerError(
-            f"{target_name(owner)}.{method}",
-            f"{owner.__qualname__} has no method {method!r} to read its event from",
-        )
-
-    return found
-
-
-def function_of_or_none(owner: type, method: str) -> tuple[Callable[..., object], bool] | None:
+def function_of(owner: type, method: str) -> tuple[Callable[..., object], bool] | None:
     """Return the function behind ``method``, and whether ``self`` or ``cls`` is bound to it.
 
     ``None`` when ``method`` is not a function written on the class or its

@@ -10,7 +10,7 @@ the build rather than the first event.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 
 from xtr_dependency_injection import ContainerBuilder
@@ -21,6 +21,7 @@ from xtr_event_dispatcher._subscribed_events import listeners_subscribed_by
 from xtr_event_dispatcher.decorator.event_listener_declaration import EventListenerDeclaration
 from xtr_event_dispatcher.event_subscriber_interface import EventSubscriberInterface
 from xtr_event_dispatcher.exception import InvalidListenerError
+from xtr_event_dispatcher.subscribed_listener import OrderTarget
 
 from ._listener_reference import FunctionListener, ListenerReference, ServiceListener
 from ._listener_signature import (
@@ -29,14 +30,31 @@ from ._listener_signature import (
     default_method,
     events_of,
     function_of,
-    function_of_or_none,
     own_arity,
 )
 
-__all__ = ["LISTENER_TAG", "SUBSCRIBER_TAG", "DeclaredListener", "declared_listeners"]
+__all__ = [
+    "DISPATCHER_TAG",
+    "LISTENER_TAG",
+    "SUBSCRIBER_TAG",
+    "DeclaredListener",
+    "declared_listeners",
+]
+
+DISPATCHER_TAG = "event_dispatcher.dispatcher"
+"""The tag a dispatcher the container hands listeners to carries.
+
+The dispatcher is registered as ``EventDispatcherInterface`` under its name as
+the qualifier — ``None`` for the default one — with
+:func:`~xtr_event_dispatcher.bundle.event_dispatcher_factory`; listeners join
+it by naming it in their ``dispatcher`` attribute.
+"""
 
 LISTENER_TAG = "event_dispatcher.listener"
+"""The tag a listener service carries, its attributes those of ``@as_event_listener``."""
+
 SUBSCRIBER_TAG = "event_dispatcher.subscriber"
+"""The tag a subscriber service carries; its one attribute is ``dispatcher``."""
 
 _TAG_KEYS = frozenset({"event", "method", "priority", "dispatcher", "before", "after"})
 
@@ -72,7 +90,7 @@ class DeclaredListener:
 
 def declared_listeners(
     builder: ContainerBuilder,
-    functions: list[tuple[Callable[..., object], EventListenerDeclaration]],
+    functions: Sequence[tuple[Callable[..., object], EventListenerDeclaration]],
     aliases: dict[str, str],
 ) -> list[DeclaredListener]:
     """Return every listener, in declaration order: tagged services, subscribers, functions.
@@ -162,7 +180,13 @@ def _class_listeners(
     if declaration.event is None:
         # The event is read from the method's signature, so that method is the one called.
         method = method or CALL
-        function, bound = function_of(owner, method)
+        found = function_of(owner, method)
+        if found is None:
+            raise InvalidListenerError(
+                f"{target_name(owner)}.{method}",
+                f"{owner.__qualname__} has no method {method!r} to read its event from",
+            )
+        function, bound = found
         events = events_of(function, target_name(owner), skip_first=bound)
     else:
         events = [declaration.event]
@@ -178,8 +202,8 @@ def _class_listeners(
                 _alias(event, aliases),
                 declaration.priority,
                 declaration.dispatcher,
-                tuple(map(target_name, declaration.before)),
-                tuple(map(target_name, declaration.after)),
+                _target_names(declaration.before),
+                _target_names(declaration.after),
                 names,
             ),
         )
@@ -205,7 +229,7 @@ def _subscriber_listeners(
         dispatcher = attributes.get("dispatcher")
         if not (dispatcher is None or isinstance(dispatcher, str)):
             raise InvalidListenerError(
-                target_name(owner),
+                label,
                 f"its subscriber tag names the dispatcher {dispatcher!r}, which is not a name",
             )
         if dispatcher not in dispatchers:
@@ -218,11 +242,11 @@ def _subscriber_listeners(
         declared.extend(
             DeclaredListener(
                 ServiceListener(key[0], key[1], subscribed.method),
-                aliases.get(subscribed.event_name, subscribed.event_name),
+                _alias(subscribed.event_name, aliases),
                 subscribed.priority,
                 dispatcher,
-                tuple(map(target_name, subscribed.before)),
-                tuple(map(target_name, subscribed.after)),
+                _target_names(subscribed.before),
+                _target_names(subscribed.after),
                 names,
             )
             for dispatcher in dispatchers or [None]
@@ -249,8 +273,8 @@ def _function_listeners(
             _alias(event, aliases),
             declaration.priority,
             declaration.dispatcher,
-            tuple(map(target_name, declaration.before)),
-            tuple(map(target_name, declaration.after)),
+            _target_names(declaration.before),
+            _target_names(declaration.after),
             (label,),
         )
         for event in events
@@ -266,7 +290,7 @@ def _names(owner: type, method: str) -> tuple[str, ...]:
     come last, as the label.
     """
     label = f"{target_name(owner)}.{method}"
-    found = function_of_or_none(owner, method)
+    found = function_of(owner, method)
     defined = target_name(found[0]) if found is not None else label
 
     return (target_name(owner), *dict.fromkeys((defined, label)))
@@ -275,3 +299,7 @@ def _names(owner: type, method: str) -> tuple[str, ...]:
 def _alias(event: str | type, aliases: dict[str, str]) -> str:
     name = event_name_of(event)
     return aliases.get(name, name)
+
+
+def _target_names(targets: tuple[OrderTarget, ...]) -> tuple[str, ...]:
+    return tuple(map(target_name, targets))
