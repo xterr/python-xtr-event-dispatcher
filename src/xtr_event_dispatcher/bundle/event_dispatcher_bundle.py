@@ -111,7 +111,10 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
         services: ServiceConfigurator,
         builder: ContainerBuilder,
     ) -> None:
-        """Register a dispatcher per name, traced in debug mode."""
+        """Register a dispatcher per name, traced in debug mode, and the console command.
+
+        The command joins in debug mode only, when a console bundle is active.
+        """
         self._config = config
         debug = bool(builder.get_parameter("kernel.debug"))
         trace = config.trace if config.trace is not None else debug
@@ -124,6 +127,8 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
                     .set_decorated_service(EventDispatcherInterface, qualifier=name)
                     .add_tag("kernel.reset", method="reset")
                 )
+        if debug and bundle_active(builder, "console"):
+            services.load("xtr_event_dispatcher.command")
 
     @override
     async def boot(self) -> None:

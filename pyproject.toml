@@ -33,6 +33,9 @@ di = [
     "xtr-dependency-injection>=2.0,<3",
     "xtr-service-contracts>=2.0,<3",
 ]
+console = [
+    "xtr-console>=2.0,<3",
+]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
 # Advertising activates nothing: an application lists the bundles it wants.
@@ -47,6 +50,7 @@ dev = [
     "pytest-cov>=5",
     "anyio>=4.0",
     "ty>=0.0.83",
+    "xtr-console>=2.0,<3",
     "xtr-dependency-injection>=2.0,<3",
     "xtr-logging>=2.0,<3",
     "xtr-service-contracts>=2.0,<3",
