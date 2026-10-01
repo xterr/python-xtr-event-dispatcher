@@ -18,6 +18,8 @@ await dispatcher.dispatch(OrderPlaced(42))
 - :class:`ImmutableEventDispatcher` — one handed out for dispatching only.
 - :class:`ScopedEventDispatcher` — listeners for one scope, added next to
   those of a shared dispatcher without changing it.
+- :class:`IntrospectableDispatcherInterface` — what those two wrap: a
+  dispatcher that dispatches and reads its listeners, nothing more.
 - :class:`LazyListener` — a listener whose object is built when first needed.
 - :class:`GenericEvent` — an event with a subject and named arguments.
 - :func:`as_event_listener` — declare a listener where it is written, for
@@ -60,6 +62,7 @@ from .exception import (
 )
 from .generic_event import GenericEvent
 from .immutable_event_dispatcher import ImmutableEventDispatcher
+from .introspectable_dispatcher_interface import IntrospectableDispatcherInterface
 from .lazy_listener import LazyListener
 from .scoped_event_dispatcher import ScopedEventDispatcher
 from .subscribed_listener import OrderTarget, SubscribedListener
@@ -82,6 +85,7 @@ __all__ = [
     "EventSubscriberInterface",
     "GenericEvent",
     "ImmutableEventDispatcher",
+    "IntrospectableDispatcherInterface",
     "InvalidArgumentError",
     "InvalidListenerError",
     "InvalidSubscriberError",

@@ -5,9 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from xtr_event_dispatcher_contracts import Listener
-
-    from ._introspectable_dispatcher import IntrospectableDispatcher
+    from xtr_event_dispatcher_contracts import Listener, ListenerIntrospectionInterface
 
 __all__ = ["prioritized_listeners"]
 
@@ -20,7 +18,7 @@ class _KeepsPriorities(Protocol):
 
 
 def prioritized_listeners(
-    dispatcher: IntrospectableDispatcher, event_name: str
+    dispatcher: ListenerIntrospectionInterface, event_name: str
 ) -> list[tuple[int, Listener]]:
     """Return the event's listeners in running order, each with the priority it runs at.
 

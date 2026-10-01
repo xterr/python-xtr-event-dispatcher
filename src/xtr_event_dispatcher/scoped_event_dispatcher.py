@@ -13,7 +13,7 @@ from .event_dispatcher import EventDispatcher
 if TYPE_CHECKING:
     from xtr_event_dispatcher_contracts import Listener
 
-    from ._introspectable_dispatcher import IntrospectableDispatcher
+    from .introspectable_dispatcher_interface import IntrospectableDispatcherInterface
 
 __all__ = ["ScopedEventDispatcher"]
 
@@ -40,7 +40,7 @@ class ScopedEventDispatcher(EventDispatcher):
     dispatched by the wrapped dispatcher itself.
     """
 
-    def __init__(self, dispatcher: IntrospectableDispatcher) -> None:
+    def __init__(self, dispatcher: IntrospectableDispatcherInterface) -> None:
         """Wrap ``dispatcher``, whose listeners keep running for every event."""
         super().__init__()
         self._dispatcher = dispatcher

@@ -14,8 +14,8 @@ from .exception import BadMethodCallError
 if TYPE_CHECKING:
     from xtr_event_dispatcher_contracts import Listener
 
-    from ._introspectable_dispatcher import IntrospectableDispatcher
     from .event_subscriber_interface import EventSubscriberInterface
+    from .introspectable_dispatcher_interface import IntrospectableDispatcherInterface
 
 __all__ = ["ImmutableEventDispatcher"]
 
@@ -43,7 +43,7 @@ class ImmutableEventDispatcher(EventDispatcherInterface):
     ```
     """
 
-    def __init__(self, dispatcher: IntrospectableDispatcher) -> None:
+    def __init__(self, dispatcher: IntrospectableDispatcherInterface) -> None:
         """Wrap ``dispatcher``, which keeps dispatching and answering for its listeners."""
         self._dispatcher = dispatcher
 
