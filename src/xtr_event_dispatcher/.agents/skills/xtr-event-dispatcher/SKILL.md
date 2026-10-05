@@ -198,6 +198,10 @@ async def test_the_worker_announces_what_it_consumed() -> None:
 
 ## Use in an application
 
+`uv run xtr-recipes recipes:sync` applies the recipe shipped with this package: it lists
+`EventDispatcherBundle`, or leaves it out when the messenger or scheduler bundle already requires
+it. That is the steps below a recipe can do; the others it prints for you to make.
+
 1. **Install** — `uv add "xtr-event-dispatcher[di]"`; add the `console` extra for
    `debug:event-dispatcher` in debug mode.
 2. **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`

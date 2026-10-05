@@ -42,6 +42,10 @@ console = [
 [project.entry-points."xtr_dependency_injection.bundles"]
 event_dispatcher = "xtr_event_dispatcher.bundle:EventDispatcherBundle"
 
+# Advertises the recipe — what *Use in an application* takes — for recipes:sync.
+[project.entry-points."xtr_recipes"]
+event_dispatcher = "xtr_event_dispatcher.recipe"
+
 [dependency-groups]
 dev = [
     "basedpyright>=1.21",

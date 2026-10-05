@@ -1,0 +1,23 @@
+# The recipe for xtr-event-dispatcher: what *Use in an application* in the
+# README takes, as data. Keep the two in step — the README is the source.
+
+[bundles]
+# "<module>:<class>" = the environments it is listed with, exactly as in BUNDLES.
+# Left out of BUNDLES when the messenger or scheduler bundle already requires it.
+"xtr_event_dispatcher.bundle:EventDispatcherBundle" = { all = true }
+
+# No [files]: configuring is optional. With none there is one empty dispatcher
+# and every scanned listener joins it. An application that wants aliases or
+# named dispatchers writes config/event_dispatcher.py itself.
+
+# No [env]: nothing is required.
+
+[gitignore]
+# Nothing: the dispatcher writes no file into the project.
+lines = []
+
+[notes]
+check = [
+  "<script> debug:bundles — event_dispatcher is listed or required, and active",
+  "<script> debug:event-dispatcher — in debug mode, every listener the scan found",
+]

@@ -189,6 +189,9 @@ Everything adding this package to an application on
 
 - **Install** — `uv add "xtr-event-dispatcher[di]"`; `console` adds `debug:event-dispatcher`,
   registered in debug mode only.
+- **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate* step below: it lists
+  `EventDispatcherBundle`, or leaves it out when the messenger or scheduler bundle already
+  requires it. There is no config file, environment or ignore line to write.
 - **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`,
   imported from `xtr_event_dispatcher.bundle`. The messenger and scheduler bundles require it
   when it is installed.
