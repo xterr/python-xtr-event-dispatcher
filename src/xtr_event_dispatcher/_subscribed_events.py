@@ -64,7 +64,7 @@ def listeners_subscribed_by(
         )
 
     declared: list[SubscribedListenerDeclaration] = []
-    for event, spec in cast("Mapping[object, object]", events).items():
+    for event, declaration in cast("Mapping[object, object]", events).items():
         if not isinstance(event, str | type):
             raise InvalidSubscriberError(
                 subscriber.__qualname__,
@@ -72,7 +72,7 @@ def listeners_subscribed_by(
                 f"{event!r} is neither an event name nor an event class",
             )
         reader = _Reader(subscriber.__qualname__, event_name_of(event))
-        items: object = spec
+        items: object = declaration
         if isinstance(items, list):
             declared.extend(reader.one(item) for item in cast("list[object]", items))
         else:

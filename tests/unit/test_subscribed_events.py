@@ -66,7 +66,7 @@ def test_ordering_targets_are_read_one_or_several() -> None:
 
 
 @pytest.mark.parametrize(
-    "spec",
+    "declaration",
     [
         5,
         ["on_foo", 5],
@@ -90,9 +90,9 @@ def test_ordering_targets_are_read_one_or_several() -> None:
         "a-boolean-priority",
     ],
 )
-def test_a_declaration_of_no_known_shape_is_refused(spec: object) -> None:
+def test_a_declaration_of_no_known_shape_is_refused(declaration: object) -> None:
     with pytest.raises(InvalidSubscriberError) as raised:
-        _ = listeners_subscribed_by(_subscriber({"foo": spec}))
+        _ = listeners_subscribed_by(_subscriber({"foo": declaration}))
 
     assert raised.value.subscriber.endswith("Declaring")
     assert raised.value.event_name == "foo"
