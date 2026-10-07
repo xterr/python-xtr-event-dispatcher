@@ -8,7 +8,7 @@ without one takes the priority its place needs.
 
 from __future__ import annotations
 
-from xtr_dependency_injection.compiler.before_after_sorter import sort_with_priorities
+from xtr_dependency_injection import sort_with_priorities
 from xtr_dependency_injection.exception import ServiceOrderError
 
 from xtr_event_dispatcher.exception import InvalidListenerError

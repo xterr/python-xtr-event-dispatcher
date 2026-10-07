@@ -48,7 +48,7 @@ from xtr_event_dispatcher_contracts import (
 
 from .compiled_event_dispatcher import CompiledEventDispatcher
 from .decorator import as_event_listener
-from .event_dispatcher import EventDispatcher
+from .event_dispatcher import EventDispatcher, ListenerCall
 from .event_dispatcher_interface import EventDispatcherInterface
 from .event_subscriber_interface import EventSubscriberInterface, SubscribedEvents
 from .exception import (
@@ -91,6 +91,7 @@ __all__ = [
     "InvalidSubscriberError",
     "LazyListener",
     "Listener",
+    "ListenerCall",
     "ListenerIntrospectionInterface",
     "ListenerSignatureError",
     "OrderTarget",

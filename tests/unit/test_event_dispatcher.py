@@ -175,6 +175,18 @@ async def test_a_dispatch_sorts_the_listeners_once(
 
 
 @pytest.mark.anyio
+async def test_dispatching_events_nobody_listens_to_keeps_nothing() -> None:
+    dispatcher = EventDispatcher()
+
+    for index in range(1000):
+        _ = await dispatcher.dispatch(Event(), f"unheard.{index}")
+        _ = dispatcher.get_listeners(f"unasked.{index}")
+
+    sorted_cache = cast("dict[str, object]", vars(dispatcher)["_sorted"])
+    assert sorted_cache == {}
+
+
+@pytest.mark.anyio
 async def test_dispatch_returns_the_event_it_was_given(dispatcher: EventDispatcher) -> None:
     dispatcher.add_listener(PRE_FOO, RecordingListener().pre_foo)
     event = Event()

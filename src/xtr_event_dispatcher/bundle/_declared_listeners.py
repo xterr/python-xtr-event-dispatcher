@@ -151,7 +151,7 @@ def _declaration_from(attributes: dict[str, object], label: str) -> EventListene
         raise invalid(f"names the event {event!r}, which is neither a name nor a class")
     if not (method is None or isinstance(method, str)):
         raise invalid(f"names the method {method!r}, which is not a name")
-    if not (priority is None or isinstance(priority, int)):
+    if not (priority is None or isinstance(priority, int)) or isinstance(priority, bool):
         raise invalid(f"gives the priority {priority!r}, which is not an integer")
     if not (dispatcher is None or isinstance(dispatcher, str)):
         raise invalid(f"names the dispatcher {dispatcher!r}, which is not a name")

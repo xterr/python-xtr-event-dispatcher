@@ -274,12 +274,18 @@ class EventDispatcher(EventDispatcherInterface):
         ]
 
     def _sort(self, name: str) -> list[_Entry]:
-        """Return the event's entries in running order, sorted once until they change."""
+        """Return the event's entries in running order, sorted once until they change.
+
+        An event without listeners is not cached: dispatching ever-new names
+        nobody listens to must not grow the cache without bound.
+        """
         cached = self._sorted.get(name)
         if cached is not None:
             return cached
 
-        by_priority = self._listeners.get(name, {})
+        by_priority = self._listeners.get(name)
+        if by_priority is None:
+            return []
         entries = [
             entry
             for priority in sorted(by_priority, reverse=True)

@@ -12,6 +12,14 @@ reaches it, and it refuses to change afterwards — a listener that must live
 for one scope goes on a :class:`ScopedEventDispatcher` wrapping it. In debug
 mode it is traced, writing to the ``"event"`` logging channel when the
 logging bundle is active.
+
+The dispatcher's factory is the one service here given the container
+itself, and on purpose: what it holds is known only once every bundle has
+registered, and is heterogeneous — services of any type and qualifier,
+fetched lazily the first time an event reaches them, and listener functions
+whose own container-supplied parameters are resolved on every call. A
+``ServiceLocator[T]`` is keyed by name over one type and cannot resolve a
+function's parameters, so it cannot stand in for either.
 """
 
 from __future__ import annotations
@@ -22,6 +30,7 @@ from typing import cast, final
 
 from typing_extensions import override
 from xtr_dependency_injection import (
+    BUNDLE_PASS_PRIORITY,
     Bundle,
     ContainerBuilder,
     PassStage,
@@ -30,7 +39,6 @@ from xtr_dependency_injection import (
     bundle_active,
     required_bundle,
 )
-from xtr_dependency_injection.kernel.kernel import BUNDLE_PASS_PRIORITY
 
 from xtr_event_dispatcher.decorator.event_listener_declaration import (
     EventListenerDeclaration,

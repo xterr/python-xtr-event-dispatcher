@@ -141,3 +141,13 @@ class ScopedEventDispatcher(EventDispatcher):
         self._merged.add(name)
         for priority, listener in prioritized_listeners(self._dispatcher, name):
             super().add_listener(name, listener, priority)
+
+    def reset(self) -> None:
+        """Forward a reset to the wrapped dispatcher when it has one, a no-op otherwise.
+
+        A trace behind this scoped one is still reset between units of work;
+        the scoped dispatcher itself is discarded with its scope.
+        """
+        reset = getattr(self._dispatcher, "reset", None)
+        if callable(reset):
+            _ = reset()

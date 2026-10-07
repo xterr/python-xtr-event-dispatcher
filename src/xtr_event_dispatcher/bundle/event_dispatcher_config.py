@@ -71,8 +71,10 @@ class EventDispatcherConfig:
         """Return a copy that maps ``aliases`` as well.
 
         An alias already mapped keeps its event — the application's choice
-        stands — and a copy with nothing to add is this very config. This is
-        how a bundle offers names for its events from ``prepend_extension``::
+        stands, whatever spelling either used — an application mapping a class
+        wins over a bundle respelling the same event as its name — and a copy
+        with nothing to add is this very config. This is how a bundle offers
+        names for its events from ``prepend_extension``::
 
             builder.prepend_extension_config(
                 EventDispatcherConfig, lambda c: c.with_event_aliases({"order.placed": OrderPlaced})
@@ -81,8 +83,12 @@ class EventDispatcherConfig:
         Raises:
             InvalidArgumentError: When an alias or its event is not a name.
         """
+        mapped = {event_name_of(alias) for alias in self.event_aliases}
         added = {
-            alias: event for alias, event in aliases.items() if alias not in self.event_aliases
+            alias: event
+            for alias, event in aliases.items()
+            if not isinstance(alias, str | type)  # pyright: ignore[reportUnnecessaryIsInstance] -- a non-name key falls through to __post_init__, which raises InvalidArgumentError
+            or event_name_of(alias) not in mapped
         }
         if not added:
             return self

@@ -38,6 +38,8 @@ def event_dispatcher_factory(name: str | None = None) -> Callable[..., EventDisp
     The factory builds a :class:`CompiledEventDispatcher`, each listener
     service fetched when an event first reaches it. One function per
     dispatcher, so each carries its own name in the container's report.
+    It takes the container itself, for the lazily fetched services and the
+    listener functions' parameters; the bundle module says why.
     """
 
     def event_dispatcher(

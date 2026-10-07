@@ -192,6 +192,7 @@ def test_a_static_method_is_accepted_as_it_is() -> None:
         ({"event": 5}, "neither a name nor a class"),
         ({"event": "foo", "method": 5}, "which is not a name"),
         ({"event": "foo", "priority": "high"}, "not an integer"),
+        ({"event": "foo", "priority": True}, "not an integer"),
         ({"event": "foo", "dispatcher": 5}, "which is not a name"),
         ({"event": "foo", "before": [5]}, "neither a class, a function"),
     ],

@@ -64,6 +64,24 @@ def test_with_event_aliases_returns_the_same_config_when_nothing_is_new() -> Non
     assert config.with_event_aliases({"placed": _Shipped}) is config
 
 
+def test_with_event_aliases_keeps_a_class_alias_a_bundle_respells_as_a_string() -> None:
+    config = EventDispatcherConfig(event_aliases={_Placed: _Shipped})
+
+    extended = config.with_event_aliases({f"{__name__}._Placed": _Placed})
+
+    assert extended is config
+    assert extended.aliases() == {f"{__name__}._Placed": f"{__name__}._Shipped"}
+
+
+def test_with_event_aliases_keeps_a_string_alias_a_bundle_respells_as_a_class() -> None:
+    config = EventDispatcherConfig(event_aliases={f"{__name__}._Placed": _Shipped})
+
+    extended = config.with_event_aliases({_Placed: _Placed})
+
+    assert extended is config
+    assert extended.aliases() == {f"{__name__}._Placed": f"{__name__}._Shipped"}
+
+
 def test_with_event_aliases_refuses_an_alias_that_is_not_a_name() -> None:
     with pytest.raises(InvalidArgumentError):
         _ = EventDispatcherConfig().with_event_aliases({"placed": cast("type", cast("object", 5))})

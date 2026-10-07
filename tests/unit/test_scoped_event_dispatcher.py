@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import final
+
 import pytest
 
 from xtr_event_dispatcher import (
@@ -194,3 +196,24 @@ async def test_a_traced_wrapped_listener_registered_at_two_priorities_keeps_both
     _ = await scoped.dispatch(Event(), "pre.foo")
 
     assert called == ["twice", "middle", "scoped", "twice"]
+
+
+def test_reset_reaches_a_wrapped_dispatcher_that_has_one() -> None:
+    calls: list[str] = []
+
+    @final
+    class Resettable(EventDispatcher):
+        def reset(self) -> None:
+            calls.append("reset")
+
+    dispatcher = ScopedEventDispatcher(Resettable())
+
+    dispatcher.reset()
+
+    assert calls == ["reset"]
+
+
+def test_reset_is_a_no_op_when_the_wrapped_dispatcher_has_none(
+    dispatcher: ScopedEventDispatcher,
+) -> None:
+    dispatcher.reset()
