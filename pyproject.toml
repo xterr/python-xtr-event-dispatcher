@@ -1,6 +1,6 @@
 [project]
 name = "xtr-event-dispatcher"
-version = "4.0.0"
+version = "4.0.1"
 description = "Let the parts of an application talk through events: listeners and subscribers run by priority, any of them able to stop the rest."
 readme = "README.md"
 authors = [
