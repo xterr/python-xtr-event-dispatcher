@@ -21,7 +21,9 @@ adding a listener, never editing the code that dispatched.
   `dispatcher.add_subscriber(instance)`.
 - A library that only dispatches depends on `xtr-event-dispatcher-contracts` and types against
   `xtr_event_dispatcher_contracts.EventDispatcherInterface`.
-- In an application: activate `EventDispatcherBundle`, inject `EventDispatcherInterface`.
+- In an application, with xtr-dependency-injection installed beside the package (it is not a
+  dependency): activate `EventDispatcherBundle`, inject `EventDispatcherInterface`. Without the
+  container, build an `EventDispatcher` yourself; only `xtr_event_dispatcher.bundle` needs it.
 - Never add a listener to the container's dispatcher at runtime; wrap it in
   `ScopedEventDispatcher`.
 
@@ -202,8 +204,10 @@ async def test_the_worker_announces_what_it_consumed() -> None:
 `EventDispatcherBundle`, or leaves it out when the messenger or scheduler bundle already requires
 it. That is the steps below a recipe can do; the others it prints for you to make.
 
-1. **Install** — `uv add "xtr-event-dispatcher[di]"`; add the `console` extra for
-   `debug:event-dispatcher` in debug mode.
+1. **Install** — `uv add xtr-event-dispatcher xtr-dependency-injection`: the bundle needs the
+   container installed beside it, never as an extra. Install xtr-console beside it for
+   `debug:event-dispatcher` in debug mode, and xtr-logging for the debug-mode trace's `event`
+   channel.
 2. **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`
    (`from xtr_event_dispatcher.bundle import EventDispatcherBundle`). Nothing to do when the
    messenger or scheduler bundle is listed: both require it when it is installed.

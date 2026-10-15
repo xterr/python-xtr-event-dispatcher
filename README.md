@@ -27,22 +27,23 @@ it. Adding a fourth concern is adding a listener, not editing the order code.
 - 💤 **Lazy listeners** — the object a listener belongs to is built when an event first reaches it.
 - 🔒 **Immutable, scoped, compiled** — hand a dispatcher out without letting anyone change it,
   and add listeners for one scope without touching a shared one.
-- 🧩 **A bundle** — `@as_event_listener` on a class, a method or a function, and the container
-  wires it, ordered by priority and `before`/`after`.
+- 🧩 **An optional bundle** — `@as_event_listener` on a class, a method or a function, and the
+  container wires it, ordered by priority and `before`/`after`, once xtr-dependency-injection is
+  installed beside it.
 - 🔍 **Tracing** — which listeners ran, which did not, and which events nobody heard.
 
 ## Install
 
 ```sh
-uv add xtr-event-dispatcher
+uv add xtr-event-dispatcher                           # the dispatchers
+uv add xtr-event-dispatcher xtr-dependency-injection  # + the container, for the EventDispatcherBundle
+uv add xtr-console                                    # beside it: + debug:event-dispatcher, in debug mode
 ```
 
-With a container:
-
-```sh
-uv add "xtr-event-dispatcher[di]"
-uv add "xtr-event-dispatcher[di,console]"  # + debug:event-dispatcher, in debug mode
-```
+Requires Python 3.11+. Depends on `typing-extensions`, `xtr-event-dispatcher-contracts` and
+`xtr-logging-contracts` — not on the container: the bundle is used when
+[xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, never as
+an extra, and the dispatchers work without it.
 
 A library that only *dispatches* events depends on
 [xtr-event-dispatcher-contracts](../xtr-event-dispatcher-contracts) instead, and leaves the
@@ -187,8 +188,10 @@ them alone otherwise.
 Everything adding this package to an application on
 [xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what removing it undoes.
 
-- **Install** — `uv add "xtr-event-dispatcher[di]"`; `console` adds `debug:event-dispatcher`,
-  registered in debug mode only.
+- **Install** — `uv add xtr-event-dispatcher xtr-dependency-injection`: the bundle needs the
+  container installed beside it, never as an extra. Install xtr-console beside it for
+  `debug:event-dispatcher`, registered in debug mode only, and xtr-logging for the debug-mode
+  trace's `event` channel.
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate* step below: it lists
   `EventDispatcherBundle`, or leaves it out when the messenger or scheduler bundle already
   requires it. There is no config file, environment or ignore line to write.
@@ -208,6 +211,10 @@ Everything adding this package to an application on
   `active`; in debug mode, `debug:event-dispatcher` lists every listener the scan found.
 
 ## Kernel / bundle
+
+With [xtr-dependency-injection](../xtr-dependency-injection) installed beside the package — it is
+not a dependency, and nothing outside `xtr_event_dispatcher.bundle` and the command it loads needs
+it — list the bundle:
 
 ```python
 # app/bundles.py
@@ -333,8 +340,9 @@ The bundle's zero-config path builds an empty dispatcher and does no I/O.
 
 ### `debug:event-dispatcher`
 
-With a console bundle active, debug mode gets a command listing each event's listeners in the
-order they run, with their priorities — of any dispatcher, another bundle's included:
+With xtr-console installed beside the package and its bundle active, debug mode gets a command
+listing each event's listeners in the order they run, with their priorities — of any dispatcher,
+another bundle's included:
 
 ```sh
 app debug:event-dispatcher                      # every event of the default dispatcher

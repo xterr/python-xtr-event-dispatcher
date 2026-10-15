@@ -1,7 +1,8 @@
 # Declaring listeners for the container
 
-What `EventDispatcherBundle` reads, and how it orders what it finds. Everything here needs
-`uv add "xtr-event-dispatcher[di]"` and the bundle listed in `BUNDLES`.
+What `EventDispatcherBundle` reads, and how it orders what it finds. Everything here needs the
+bundle listed in `BUNDLES`, with xtr-dependency-injection installed beside the package — it is
+not a dependency: `uv add xtr-event-dispatcher xtr-dependency-injection`.
 
 ## `@as_event_listener`
 
@@ -177,7 +178,7 @@ debug, `trace=True` to keep it in production.
 
 ## Listing the listeners
 
-With the `console` extra and a console bundle active, debug mode has
+With xtr-console installed beside the package and its bundle active, debug mode has
 `debug:event-dispatcher`: every event's listeners in running order, with priorities.
 `debug:event-dispatcher OrderPlaced` shows the events whose name contains the text,
 `--dispatcher audit` reads a named dispatcher — another bundle's included — and `--format`
