@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
+from inspect import signature
 from typing import TypeAlias
 
 from xtr_dependency_injection import bind_callable
@@ -63,10 +64,14 @@ class FunctionListener:
         async def listener(*arguments: object) -> None:
             _ = await bound(*arguments[:arity])
 
-        # Named like the function, for traces; not wrapped, so that its
-        # signature stays the one taking every argument.
+        # Named like the function, for traces, and leading to it, so that
+        # ``inspect.unwrap`` finds its source. Its own signature is pinned,
+        # since ``inspect.signature`` would otherwise follow ``__wrapped__``:
+        # a dispatcher must keep handing it every argument it trims itself.
         for attribute in ("__module__", "__name__", "__qualname__"):
             setattr(listener, attribute, getattr(self.function, attribute))
+        setattr(listener, "__signature__", signature(listener))  # noqa: B010 — read by inspect.signature.
+        setattr(listener, "__wrapped__", self.function)  # noqa: B010 — read by inspect.unwrap.
 
         return listener
 

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import inspect
+from typing import cast
+
 import pytest
 import xtr_event_dispatcher_contracts
 from xtr_dependency_injection import Kernel
+from xtr_event_dispatcher_contracts import Listener
 from xtr_logging_contracts import LoggerInterface
 
 from tests.fixtures.app_events.events import OrderPlaced, OrderShipped
 from tests.fixtures.app_events.journal import Journal
+from tests.fixtures.app_events.listeners import send_receipt
 from xtr_event_dispatcher import (
     BadMethodCallError,
     CompiledEventDispatcher,
@@ -192,6 +197,44 @@ async def test_a_listener_not_built_yet_is_named_after_its_service() -> None:
     assert "LazyListener(tests.fixtures.app_events.listeners.Shipping, 'on_order_shipped')" in map(
         repr, listeners
     )
+
+
+async def _receipt_listener() -> tuple[EventDispatcherInterface, Listener]:
+    async with await _kernel().boot() as booted:
+        dispatcher = await booted.container.get(EventDispatcherInterface)
+
+    listener = next(
+        listener
+        for listener in dispatcher.get_listeners(OrderPlaced)
+        if getattr(listener, "__name__", None) == "send_receipt"
+    )
+    return dispatcher, listener
+
+
+async def test_a_listener_function_unwraps_to_the_function_declared() -> None:
+    _, listener = await _receipt_listener()
+
+    unwrapped = cast("object", inspect.unwrap(listener))
+
+    assert unwrapped is send_receipt
+
+
+async def test_a_listener_function_keeps_the_signature_taking_every_argument() -> None:
+    _, listener = await _receipt_listener()
+
+    signature = inspect.signature(listener)
+
+    assert [parameter.kind for parameter in signature.parameters.values()] == [
+        inspect.Parameter.VAR_POSITIONAL
+    ]
+
+
+async def test_a_listener_function_is_found_by_the_listener_it_was_registered_as() -> None:
+    dispatcher, listener = await _receipt_listener()
+
+    priority = dispatcher.get_listener_priority(OrderPlaced, listener)
+
+    assert priority == 0
 
 
 async def test_a_listener_declaring_no_event_fails_the_build() -> None:
