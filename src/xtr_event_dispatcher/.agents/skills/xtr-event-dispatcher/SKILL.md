@@ -208,7 +208,7 @@ it. That is the steps below a recipe can do; the others it prints for you to mak
    container installed beside it, never as an extra. Install xtr-console beside it for
    `debug:event-dispatcher` in debug mode, and xtr-logging for the debug-mode trace's `event`
    channel.
-2. **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`
+2. **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`
    (`from xtr_event_dispatcher.bundle import EventDispatcherBundle`). Nothing to do when the
    messenger or scheduler bundle is listed: both require it when it is installed.
 3. **Brings along** — the logging bundle, when xtr-logging is installed.
@@ -216,7 +216,7 @@ it. That is the steps below a recipe can do; the others it prints for you to mak
    scanned listener joins it:
 
    ```python
-   # <app>/config/event_dispatcher.py
+   # <app>/config/packages/event_dispatcher.py
    from xtr_dependency_injection import configure
    from xtr_event_dispatcher.bundle import EventDispatcherConfig
 
@@ -258,7 +258,7 @@ it. That is the steps below a recipe can do; the others it prints for you to mak
 7. **Check** — `debug:bundles` shows `event_dispatcher` as `listed` or `required`, and `active`;
    in debug mode, `debug:event-dispatcher` lists every listener, in running order.
 8. **Remove** — drop the `BUNDLES` entry and every `@as_event_listener`, delete
-   `<app>/config/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
+   `<app>/config/packages/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
 
 ## Errors
 

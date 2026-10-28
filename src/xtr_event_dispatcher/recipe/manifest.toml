@@ -8,7 +8,7 @@
 
 # No [files]: configuring is optional. With none there is one empty dispatcher
 # and every scanned listener joins it. An application that wants aliases or
-# named dispatchers writes config/event_dispatcher.py itself.
+# named dispatchers writes config/packages/event_dispatcher.py itself.
 
 # No [env]: nothing is required.
 

@@ -195,18 +195,18 @@ Everything adding this package to an application on
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate* step below: it lists
   `EventDispatcherBundle`, or leaves it out when the messenger or scheduler bundle already
   requires it. There is no config file, environment or ignore line to write.
-- **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`,
+- **Activate** — `EventDispatcherBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`,
   imported from `xtr_event_dispatcher.bundle`. The messenger and scheduler bundles require it
   when it is installed.
 - **Brings along** — the logging bundle, when xtr-logging is installed.
 - **Configure** — optional: with no configuration there is one empty dispatcher, and every
   scanned listener joins it. Aliases and named dispatchers go in
-  `<app>/config/event_dispatcher.py`, a `@configure` function returning `EventDispatcherConfig`
+  `<app>/config/packages/event_dispatcher.py`, a `@configure` function returning `EventDispatcherConfig`
   — see [Configuration](#configuration).
 - **Environment** — nothing.
 - **Ignore** — nothing.
 - **Remove** — drop the `BUNDLES` entry and every `@as_event_listener`, delete
-  `<app>/config/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
+  `<app>/config/packages/event_dispatcher.py`, then `uv remove xtr-event-dispatcher`.
 - **Check** — `debug:bundles` shows `event_dispatcher` as `listed` or `required`, and
   `active`; in debug mode, `debug:event-dispatcher` lists every listener the scan found.
 
@@ -217,7 +217,7 @@ not a dependency, and nothing outside `xtr_event_dispatcher.bundle` and the comm
 it — list the bundle:
 
 ```python
-# app/bundles.py
+# app/config/bundles.py
 from xtr_event_dispatcher.bundle import EventDispatcherBundle
 
 BUNDLES = {EventDispatcherBundle: {"all": True}}
