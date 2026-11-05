@@ -3,7 +3,6 @@
 
 [bundles]
 # "<module>:<class>" = the environments it is listed with, exactly as in BUNDLES.
-# Left out of BUNDLES when the messenger or scheduler bundle already requires it.
 "xtr_event_dispatcher.bundle:EventDispatcherBundle" = { all = true }
 
 # No [files]: configuring is optional. With none there is one empty dispatcher
@@ -18,6 +17,6 @@ lines = []
 
 [notes]
 check = [
-  "<script> debug:bundles — event_dispatcher is listed or required, and active",
+  "<script> debug:bundles — event_dispatcher is listed and active",
   "<script> debug:event-dispatcher — in debug mode, every listener the scan found",
 ]
