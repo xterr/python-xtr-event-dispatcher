@@ -39,3 +39,27 @@ def test_an_ordering_target_that_is_no_listener_is_refused() -> None:
 
         @as_event_listener("foo", before=cast("list[str]", [5]))
         def listener() -> None: ...
+
+
+def test_written_bare_it_declares_the_function_a_listener() -> None:
+    @as_event_listener
+    def listener(event: str) -> None:
+        del event
+
+    assert callable(listener)
+    assert listener.__name__ == "listener"
+    assert listeners_declared_on(listener) == (
+        EventListenerDeclaration(None, None, None, None, (), ()),
+    )
+
+
+def test_written_bare_above_a_static_method_it_declares_the_method_a_listener() -> None:
+    class Listening:
+        @as_event_listener
+        @staticmethod
+        def on_foo(event: str) -> None:
+            del event
+
+    assert listeners_declared_on(Listening.on_foo) == (
+        EventListenerDeclaration(None, None, None, None, (), ()),
+    )

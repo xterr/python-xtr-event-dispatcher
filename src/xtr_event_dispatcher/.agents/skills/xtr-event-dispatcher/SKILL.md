@@ -251,7 +251,9 @@ make.
 
    `@as_event_listener(event=None, *, method=None, priority=None, dispatcher=None, before=None,
    after=None)` is repeatable, and goes on a class, a method (static and class methods included)
-   or a function. Every class implementing `EventSubscriberInterface` is registered too. See
+   or a function. Written bare, `@as_event_listener`, it works on a function or a method, never on
+   a class — a class given first is the event. Every class implementing `EventSubscriberInterface`
+   is registered too. See
    [references/bundle.md](references/bundle.md) for every argument, ordering with
    `before`/`after`, named dispatchers, tagging a service by hand, and which classes the scan
    picks up.
@@ -269,7 +271,7 @@ wrapped**: it reaches whoever dispatched the event, and the listeners after it d
 | --- | --- |
 | `ListenerSignatureError` (`TypeError`) | `add_listener` is given something needing more than the event, its name and the dispatcher |
 | `InvalidSubscriberError` (`ValueError`) | A subscriber's declaration has no known shape, names a method it lacks, or orders without a priority on a plain dispatcher |
-| `InvalidListenerError` (`ValueError`) | While the container is built: no event to read, a missing method, an unknown dispatcher, ordering that cannot be satisfied |
+| `InvalidListenerError` (`ValueError`) | While the container is built: no event to read, a missing method, an unknown dispatcher, ordering that cannot be satisfied, a listener service that is not a singleton |
 | `BadMethodCallError` (`RuntimeError`) | A change to an immutable or compiled dispatcher |
 | `ArgumentNotFoundError` (`KeyError`) | A `GenericEvent` has no such argument |
 | `InvalidArgumentError` (`ValueError`) | An `EventDispatcherConfig` cannot be read |

@@ -36,10 +36,11 @@ class _Trace:
     records into the same trace the context still points at.
     """
 
-    __slots__ = ("called", "orphaned", "outer")
+    __slots__ = ("called", "open", "orphaned", "outer")
 
     def __init__(self, outer: _Trace | None = None) -> None:
         self.outer = outer
+        self.open = True
         # Insertion-ordered and without repeats: a hot unheard event is listed once.
         self.orphaned: dict[str, None] = {}
         # Event name -> [listener as registered, its calls and time so far].
@@ -88,6 +89,15 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         self._logger = logger
         self._trace = _Trace()
         self._unit: ContextVar[_Trace | None] = ContextVar("event_trace_unit", default=None)
+        self.detached_variable: tuple[ContextVar[_Trace | None], None] = (self._unit, None)
+        """The variable a new connection must start without, and the value it starts from.
+
+        A server may start a connection from a copy of another's context taken
+        mid-request; without this, that request's open trace would become the
+        new one's outer trace, and what the new one records after its unit
+        ends would land in it. The bundle registers it as it builds this
+        dispatcher.
+        """
 
     @override
     async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
@@ -140,12 +150,21 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
     def begin_unit(self) -> None:
         """Open a trace scoped to the calling context, for one unit of work of its own."""
-        _ = self._unit.set(_Trace(self._unit.get()))
+        _ = self._unit.set(_Trace(self._open_unit()))
 
     def end_unit(self) -> None:
-        """Close the unit opened in this context; recording returns to where it was before."""
-        unit = self._unit.get()
-        _ = self._unit.set(None if unit is None else unit.outer)
+        """Close the unit opened in this context; recording returns to where it was before.
+
+        Closed, the unit is gone for every context that carries it too — a
+        task it started, a request a server began from its context — which
+        records outside any unit again rather than into one that is over.
+        """
+        unit = self._open_unit()
+        if unit is None:
+            return
+        unit.open = False
+        outer, unit.outer = unit.outer, None
+        _ = self._unit.set(outer)
 
     def get_called_listeners(self) -> list[ListenerInfo]:
         """Describe every listener that ran since the last reset, how often and for how long."""
@@ -183,8 +202,13 @@ class TraceableEventDispatcher(EventDispatcherInterface):
 
     def _active(self) -> _Trace:
         """Return the trace recording is going to: the open unit's, or the instance's."""
-        unit = self._unit.get()
+        unit = self._open_unit()
         return self._trace if unit is None else unit
+
+    def _open_unit(self) -> _Trace | None:
+        """Return the unit open in this context, if any: one that is over is no unit."""
+        unit = self._unit.get()
+        return unit if unit is not None and unit.open else None
 
     @overload
     def get_listeners(self, event_name: None = None) -> dict[str, list[Listener]]: ...

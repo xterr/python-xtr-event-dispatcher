@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast, final
 
@@ -883,3 +884,69 @@ async def test_a_listener_added_while_the_event_is_dispatched_waits_for_the_next
     _ = await dispatcher.dispatch(Event(), "foo")
 
     assert ran == ["first"]
+
+
+@final
+@dataclass
+class _Tagged(Event):
+    tag: str
+
+
+@final
+class _TagRecorder:
+    def __init__(self) -> None:
+        self.tags: list[str] = []
+
+    def on(self, event: _Tagged) -> None:
+        self.tags.append(event.tag)
+
+
+@pytest.mark.anyio
+async def test_a_lazy_listener_runs_for_every_concurrent_dispatch(
+    dispatcher: EventDispatcher,
+) -> None:
+    arrived = {"A": asyncio.Event(), "B": asyncio.Event()}
+    release = {"A": asyncio.Event(), "B": asyncio.Event()}
+    recorder = _TagRecorder()
+
+    async def hold(event: _Tagged) -> None:
+        arrived[event.tag].set()
+        _ = await release[event.tag].wait()
+
+    async def build() -> object:
+        return recorder
+
+    dispatcher.add_listener("foo", hold, 100)
+    dispatcher.add_listener("foo", LazyListener(build, "on"), 8)
+    first = asyncio.create_task(dispatcher.dispatch(_Tagged("A"), "foo"))
+    second = asyncio.create_task(dispatcher.dispatch(_Tagged("B"), "foo"))
+    _ = await arrived["A"].wait()
+    _ = await arrived["B"].wait()
+
+    release["A"].set()
+    _ = await first
+    release["B"].set()
+    _ = await second
+
+    assert recorder.tags == ["A", "B"]
+
+
+@pytest.mark.anyio
+async def test_a_listener_dispatching_the_same_event_does_not_skip_later_lazy_listeners(
+    dispatcher: EventDispatcher,
+) -> None:
+    recorder = _TagRecorder()
+
+    async def again(event: _Tagged) -> None:
+        if event.tag == "outer":
+            _ = await dispatcher.dispatch(_Tagged("inner"), "foo")
+
+    async def build() -> object:
+        return recorder
+
+    dispatcher.add_listener("foo", again, 10)
+    dispatcher.add_listener("foo", LazyListener(build, "on"))
+
+    _ = await dispatcher.dispatch(_Tagged("outer"), "foo")
+
+    assert recorder.tags == ["inner", "outer"]

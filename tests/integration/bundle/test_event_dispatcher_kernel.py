@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextvars
 import inspect
 from typing import cast
 
 import pytest
 import xtr_event_dispatcher_contracts
 from xtr_dependency_injection import Kernel
+from xtr_dependency_injection.integration import detached_context
 from xtr_event_dispatcher_contracts import Listener
 from xtr_logging_contracts import LoggerInterface
 
@@ -260,3 +262,18 @@ async def test_constraints_forming_a_cycle_fail_the_build() -> None:
 async def test_ordering_against_a_method_that_does_not_listen_fails_the_build() -> None:
     with pytest.raises(InvalidListenerError, match="does not listen to the event"):
         _ = await _invalid("wrong_method_target").boot()
+
+
+async def test_a_new_connection_starts_outside_a_traced_dispatchers_unit() -> None:
+    # A server may start a connection from a copy of another's context taken
+    # mid-request; that request's trace must not be the new one's outer trace.
+    async with await _kernel(debug=True).boot() as booted:
+        dispatcher = await booted.container.get(EventDispatcherInterface)
+        assert isinstance(dispatcher, TraceableEventDispatcher)
+        dispatcher.begin_unit()
+
+        copied = contextvars.copy_context()
+        open_unit = dispatcher._open_unit  # pyright: ignore[reportPrivateUsage] -- the open unit is what must not leak
+        assert copied.run(open_unit) is not None
+        assert copied.run(lambda: detached_context().run(open_unit)) is None
+        dispatcher.end_unit()

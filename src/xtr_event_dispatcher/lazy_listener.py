@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+import weakref
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from typing_extensions import override
@@ -16,6 +19,10 @@ if TYPE_CHECKING:
 __all__ = ["LazyListener"]
 
 _CALL = "__call__"
+
+# Guards the creation of each listener's per-loop build lock: loops in other
+# threads may ask for theirs at the same moment.
+_LOCKS_GUARD = threading.Lock()
 
 
 class LazyListener:
@@ -35,15 +42,20 @@ class LazyListener:
     been built, so both identify it afterwards — to remove it, or to ask for
     its priority. Until then, only the lazy listener itself does.
 
-    Two dispatches arriving together before the first build may both await
-    the factory; the first result is kept and the other discarded, so a
-    factory should hand out a shared object, as a container does.
+    Dispatches arriving together on one event loop before the first build
+    share it: the first awaits the factory and the others wait for it. Each
+    event loop builds under a lock of its own, so a listener kept for the
+    whole process serves every loop; loops running in different threads may
+    each await the factory once, the first result is kept and the others
+    discarded, so a factory should hand out a shared object, as a container
+    does.
     """
 
-    __slots__: ClassVar[tuple[str, ...]] = ("_arity", "_factory", "_method", "_resolved")
+    __slots__: ClassVar[tuple[str, ...]] = ("_arity", "_factory", "_locks", "_method", "_resolved")
 
     _arity: int
     _factory: Callable[[], Awaitable[object]]
+    _locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]
     _method: str
     _resolved: Listener | None
 
@@ -60,6 +72,7 @@ class LazyListener:
         self._resolved = None
         # Read once the listener is built: a built listener keeps its signature.
         self._arity = 0
+        self._locks = weakref.WeakKeyDictionary()
 
     @property
     def method(self) -> str:
@@ -77,17 +90,44 @@ class LazyListener:
         With ``"__call__"`` for method, the listener is the object itself, so
         it is the object that identifies the listener afterwards.
         """
-        if self._resolved is None:
-            built = await self._factory()
-            if self._resolved is None:
-                resolved = cast(
-                    "Listener",
-                    built if self._method == _CALL else getattr(built, self._method),
-                )
-                self._arity = positional_arity(resolved)
-                self._resolved = resolved
+        resolved = self._resolved
+        if resolved is not None:
+            return resolved
 
-        return self._resolved
+        async with self._build_lock():
+            resolved = self._resolved
+            if resolved is None:
+                built = await self._factory()
+                # A loop in another thread may have built it meanwhile: keep the first.
+                resolved = self._resolved
+                if resolved is None:
+                    resolved = cast(
+                        "Listener",
+                        built if self._method == _CALL else getattr(built, self._method),
+                    )
+                    self._arity = positional_arity(resolved)
+                    self._resolved = resolved
+        # Built: every later call returns above, so no loop needs its lock any
+        # more — and a lock first waited on keeps its loop alive, so it goes.
+        with _LOCKS_GUARD:
+            self._locks.clear()
+
+        return resolved
+
+    def _build_lock(self) -> asyncio.Lock:
+        """Return the lock the running event loop builds this listener under.
+
+        An :class:`asyncio.Lock` belongs to the loop it is first waited on, so
+        one shared by every loop would refuse the second; each loop gets its
+        own, dropped with the loop.
+        """
+        loop = asyncio.get_running_loop()
+        with _LOCKS_GUARD:
+            lock = self._locks.get(loop)
+            if lock is None:
+                lock = self._locks[loop] = asyncio.Lock()
+
+        return lock
 
     async def __call__(self, *arguments: object) -> None:
         """Build the listener if needed, and call it as a dispatcher would.

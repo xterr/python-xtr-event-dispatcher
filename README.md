@@ -251,7 +251,9 @@ class Audit(EventSubscriberInterface): ...  # every subscriber is registered
 
 `@as_event_listener(event=None, *, method=None, priority=None, dispatcher=None, before=None,
 after=None)`, repeatable, on a class, a method — static and class methods included, above or
-below their decorator — or a function:
+below their decorator — or a function. On a function or a method it may be written bare,
+`@as_event_listener`, the same as `@as_event_listener()`; on a class it takes the parentheses,
+since a class given first is the event:
 
 - **`event`** — a name or a class. Without it, the first parameter's annotation — each member
   of a union — is the event; the base `Event` does not count. Annotations must be importable
@@ -361,10 +363,15 @@ wrapped: it reaches the code that dispatched the event.
 |---|---|
 | `ListenerSignatureError` (`TypeError`) | A listener requires more than the event, its name and the dispatcher |
 | `InvalidSubscriberError` (`ValueError`) | A subscriber's declaration has no known shape, names a method it lacks, or orders without a priority on a plain dispatcher |
-| `InvalidListenerError` (`ValueError`) | While the container is built: no event to read, a missing method, an unknown dispatcher, ordering constraints that cannot be met |
+| `InvalidListenerError` (`ValueError`) | While the container is built: no event to read, a missing method, an unknown dispatcher, ordering constraints that cannot be met, a listener service that is not a singleton |
 | `BadMethodCallError` (`RuntimeError`) | A change to an immutable or compiled dispatcher |
 | `ArgumentNotFoundError` (`KeyError`) | A `GenericEvent` has no such argument |
 | `InvalidArgumentError` (`ValueError`) | An `EventDispatcherConfig` cannot be read |
+
+## Upgrading
+
+What changes for an application moving to 7.0, and how to keep the old behaviour where that is
+still possible: [Upgrading to 7.0](../../UPGRADING.md#xtr-event-dispatcher).
 
 ## Development
 

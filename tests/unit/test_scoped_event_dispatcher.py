@@ -198,7 +198,8 @@ async def test_a_traced_wrapped_listener_registered_at_two_priorities_keeps_both
     assert called == ["twice", "middle", "scoped", "twice"]
 
 
-def test_reset_reaches_a_wrapped_dispatcher_that_has_one() -> None:
+@pytest.mark.anyio
+async def test_reset_reaches_a_wrapped_dispatcher_that_has_one() -> None:
     calls: list[str] = []
 
     @final
@@ -208,12 +209,29 @@ def test_reset_reaches_a_wrapped_dispatcher_that_has_one() -> None:
 
     dispatcher = ScopedEventDispatcher(Resettable())
 
-    dispatcher.reset()
+    await dispatcher.reset()
 
     assert calls == ["reset"]
 
 
-def test_reset_is_a_no_op_when_the_wrapped_dispatcher_has_none(
+@pytest.mark.anyio
+async def test_reset_awaits_an_async_reset() -> None:
+    calls: list[str] = []
+
+    @final
+    class Resettable(EventDispatcher):
+        async def reset(self) -> None:
+            calls.append("reset")
+
+    dispatcher = ScopedEventDispatcher(Resettable())
+
+    await dispatcher.reset()
+
+    assert calls == ["reset"]
+
+
+@pytest.mark.anyio
+async def test_reset_is_a_no_op_when_the_wrapped_dispatcher_has_none(
     dispatcher: ScopedEventDispatcher,
 ) -> None:
-    dispatcher.reset()
+    await dispatcher.reset()

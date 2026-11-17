@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import gc
+import weakref
 from typing import TYPE_CHECKING, final
 
 import pytest
@@ -61,6 +64,54 @@ async def test_the_factory_runs_once() -> None:
 
 
 @pytest.mark.anyio
+async def test_concurrent_resolution_builds_once() -> None:
+    recorder = DispatcherRecorder()
+    building = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[None] = []
+
+    async def factory() -> object:
+        calls.append(None)
+        building.set()
+        _ = await release.wait()
+        return recorder
+
+    lazy = LazyListener(factory, "foo")
+    first = asyncio.create_task(lazy.resolve())
+    second = asyncio.create_task(lazy.resolve())
+    _ = await building.wait()
+
+    release.set()
+    listeners = await asyncio.gather(first, second)
+
+    assert len(calls) == 1
+    assert listeners == [recorder.foo, recorder.foo]
+
+
+def test_a_listener_left_unbuilt_on_one_event_loop_builds_on_another() -> None:
+    recorder = DispatcherRecorder()
+    failures = [RuntimeError("first build"), RuntimeError("second build")]
+
+    async def factory() -> object:
+        # Yield while building, so the other resolution waits for this one.
+        await asyncio.sleep(0)
+        if failures:
+            raise failures.pop(0)
+        return recorder
+
+    lazy = LazyListener(factory, "foo")
+
+    async def race() -> list[object]:
+        return list(await asyncio.gather(lazy.resolve(), lazy.resolve(), return_exceptions=True))
+
+    first_loop = asyncio.run(race())
+    second_loop = asyncio.run(race())
+
+    assert [str(outcome) for outcome in first_loop] == ["first build", "second build"]
+    assert second_loop == [recorder.foo, recorder.foo]
+
+
+@pytest.mark.anyio
 async def test_calling_it_calls_the_built_listener_with_what_it_takes() -> None:
     received: list[object] = []
     event = Event()
@@ -110,3 +161,23 @@ def test_its_representation_names_the_factory_and_the_method() -> None:
 def test_it_tells_which_method_it_calls() -> None:
     assert LazyListener(_Counting(object()), "on_foo").method == "on_foo"
     assert LazyListener(_Counting(object())).method == "__call__"
+
+
+def test_an_event_loop_two_first_dispatches_raced_on_is_released_once_it_is_closed() -> None:
+    async def build() -> Callable[[Event], None]:
+        await asyncio.sleep(0)
+        return lambda event: None
+
+    lazy = LazyListener(build)
+
+    async def race() -> None:
+        _ = await asyncio.gather(lazy.resolve(), lazy.resolve())
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(race())
+    loop.close()
+    released = weakref.ref(loop)
+    del loop
+    _ = gc.collect()
+
+    assert released() is None

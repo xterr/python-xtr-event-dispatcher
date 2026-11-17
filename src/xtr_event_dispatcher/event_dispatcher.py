@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias, TypeVar, overload
+from typing import TYPE_CHECKING, TypeAlias, TypeVar, final, overload
 
 from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
@@ -34,12 +34,21 @@ listener built into — how many of the arguments it takes, and the arguments.
 """
 
 
-@dataclass(frozen=True, slots=True)
+@final
 class _Entry:
-    """A registered listener, with how many arguments it takes worked out once."""
+    """A registered listener, with how many arguments it takes worked out once.
 
-    listener: Listener
-    arity: int
+    Known by its identity, which never changes: building a lazy listener
+    writes what it built into its entry, so a dispatch whose snapshot was
+    taken before the build — one running at the same time, or the one the
+    build happened inside — still finds the entry registered and runs it.
+    """
+
+    __slots__ = ("arity", "listener")
+
+    def __init__(self, listener: Listener, arity: int) -> None:
+        self.listener = listener
+        self.arity = arity
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,10 +305,10 @@ class EventDispatcher(EventDispatcherInterface):
         return entries
 
     async def _build(self, name: str, entry: _Entry, lazy: LazyListener) -> _Entry | None:
-        """Build ``entry``'s lazy listener and put what it built in the entry's place.
+        """Build ``entry``'s lazy listener and write what it built into the entry.
 
         Returns:
-            The built entry, or ``None`` when a pending removal drops it.
+            The entry, or ``None`` when a pending removal drops it.
         """
         # Building may add listeners to this very event: they land in the
         # lists below, after this entry, and are sorted in on the next dispatch.
@@ -311,21 +320,24 @@ class EventDispatcher(EventDispatcherInterface):
             and any(waiting is entry for waiting in removal.unbuilt)
             for removal in self._pending_removals.get(name, ())
         )
-        built = None if removed else _Entry(listener, positional_arity(listener))
-        self._replace(name, entry, built)
+        if removed:
+            self._drop(name, entry)
+            return None
 
-        return built
+        entry.listener = listener
+        entry.arity = positional_arity(listener)
+        self._prune_pending_removals(name)
 
-    def _replace(self, name: str, entry: _Entry, built: _Entry | None) -> None:
+        return entry
+
+    def _drop(self, name: str, entry: _Entry) -> None:
+        """Remove ``entry``, whose build a pending removal applies to."""
         by_priority = self._listeners.get(name, {})
         for priority, entries in list(by_priority.items()):
             for index, candidate in enumerate(entries):
                 if candidate is not entry:
                     continue
-                if built is None:
-                    del entries[index]
-                else:
-                    entries[index] = built
+                del entries[index]
                 if not entries:
                     del by_priority[priority]
                 break

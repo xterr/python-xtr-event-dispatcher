@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 from xtr_dependency_injection import AutowireDecorated, Target
+from xtr_dependency_injection.integration import register_detached_variable
 from xtr_logging_contracts import LoggerInterface
 from xtr_service_contracts import ContainerInterface
 
@@ -76,7 +77,7 @@ def _traceable(
     dispatcher: Annotated[EventDispatcherInterface, AutowireDecorated()],
 ) -> TraceableEventDispatcher:
     """Trace ``dispatcher`` without logging."""
-    return TraceableEventDispatcher(dispatcher)
+    return _detached(TraceableEventDispatcher(dispatcher))
 
 
 def _logged_traceable(
@@ -84,4 +85,10 @@ def _logged_traceable(
     logger: Annotated[LoggerInterface, Target(EVENT_CHANNEL)],
 ) -> TraceableEventDispatcher:
     """Trace ``dispatcher``, writing to the ``"event"`` channel."""
-    return TraceableEventDispatcher(dispatcher, logger)
+    return _detached(TraceableEventDispatcher(dispatcher, logger))
+
+
+def _detached(traced: TraceableEventDispatcher) -> TraceableEventDispatcher:
+    """Have every new connection start outside ``traced``'s unit of work."""
+    register_detached_variable(*traced.detached_variable)
+    return traced

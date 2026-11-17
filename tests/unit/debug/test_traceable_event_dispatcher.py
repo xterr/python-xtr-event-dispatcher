@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import subprocess
 import sys
@@ -463,6 +464,43 @@ async def test_a_copied_context_records_into_the_unit_it_still_points_at(
     assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
 
     traced.end_unit()
+
+
+async def test_a_task_outliving_the_trace_unit_does_not_see_it(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    traced.begin_unit()
+    kept = contextvars.copy_context()
+    traced.end_unit()
+
+    async def dispatch() -> None:
+        _ = await traced.dispatch(Event(), "foo")
+
+    await asyncio.get_running_loop().create_task(dispatch(), context=kept)
+
+    # Recorded where recording goes outside any unit, not into the one that ended.
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
+
+
+async def test_a_pipelined_unit_does_not_chain_onto_an_ended_one(
+    inner: EventDispatcher,
+    traced: TraceableEventDispatcher,
+) -> None:
+    inner.add_listener("foo", _one)
+    traced.begin_unit()
+    kept = contextvars.copy_context()
+    traced.end_unit()
+
+    async def next_request() -> None:
+        traced.begin_unit()
+        traced.end_unit()
+        _ = await traced.dispatch(Event(), "foo")
+
+    await asyncio.get_running_loop().create_task(next_request(), context=kept)
+
+    assert _untimed(traced) == [ListenerInfo("foo", 0, f"{__name__}._one", 1)]
 
 
 async def test_a_unit_only_exists_while_it_is_open(
