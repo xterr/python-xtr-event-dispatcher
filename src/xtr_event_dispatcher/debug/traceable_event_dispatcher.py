@@ -17,6 +17,7 @@ from .wrapped_listener import WrappedListener
 if TYPE_CHECKING:
     from xtr_event_dispatcher_contracts import Listener, ListenerIntrospectionInterface
     from xtr_logging_contracts import LoggerInterface
+    from xtr_stopwatch import Stopwatch
 
     from xtr_event_dispatcher.event_subscriber_interface import EventSubscriberInterface
 
@@ -64,7 +65,9 @@ class TraceableEventDispatcher(EventDispatcherInterface):
     between units of work.
 
     Each listener's runs are timed, so :meth:`get_called_listeners` tells where
-    a slow dispatch spent its time. Wrapping an
+    a slow dispatch spent its time; given a stopwatch, each run is also an
+    ``event_listener`` event on it, so a profile can draw it on a timeline.
+    Wrapping an
     :class:`~xtr_event_dispatcher.event_dispatcher.EventDispatcher`, it leaves
     running the listeners to it and only watches each call; any other
     dispatcher's listeners it runs itself, asking before each whether it is
@@ -80,10 +83,12 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         self,
         dispatcher: EventDispatcherInterface,
         logger: LoggerInterface | None = None,
+        stopwatch: Stopwatch | None = None,
     ) -> None:
-        """Trace ``dispatcher``, writing to ``logger`` when one is given."""
+        """Trace ``dispatcher``, writing to ``logger`` and timing on ``stopwatch`` when given."""
         self._dispatcher = dispatcher
         self._logger = logger
+        self._stopwatch = stopwatch
         self._trace = _Trace()
         self._unit: ContextVar[_Trace | None] = ContextVar("event_trace_unit", default=None)
         self.detached_variable: tuple[ContextVar[_Trace | None], None] = (self._unit, None)
@@ -116,7 +121,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
             return event
 
         if isinstance(self._dispatcher, EventDispatcher):
-            watch = _Watch(name, self._dispatcher)
+            watch = _Watch(name, self._dispatcher, self._stopwatch)
             try:
                 _ = await self._dispatcher.dispatch_through(
                     event, name, dispatcher=self, call=watch
@@ -126,7 +131,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
             return event
 
         listeners = [
-            WrappedListener(listener, self._dispatcher)
+            WrappedListener(listener, self._dispatcher, stopwatch=self._stopwatch)
             for listener in self._dispatcher.get_listeners(name)
         ]
         try:
@@ -306,14 +311,20 @@ class _Watch:
     listener registered twice is told apart by position.
     """
 
-    __slots__ = ("_dispatcher", "_name", "_next", "listeners")
+    __slots__ = ("_dispatcher", "_name", "_next", "_stopwatch", "listeners")
 
-    def __init__(self, name: str, dispatcher: ListenerIntrospectionInterface) -> None:
+    def __init__(
+        self,
+        name: str,
+        dispatcher: ListenerIntrospectionInterface,
+        stopwatch: Stopwatch | None,
+    ) -> None:
         self._name = name
         self._dispatcher = dispatcher
+        self._stopwatch = stopwatch
         self._next = 0
         self.listeners = [
-            WrappedListener(listener, priority=priority)
+            WrappedListener(listener, priority=priority, stopwatch=stopwatch)
             for priority, listener in prioritized_listeners(dispatcher, name)
         ]
 
@@ -329,7 +340,9 @@ class _Watch:
         if listener is not registered:
             # A lazy listener built just now: what it built is what ran.
             priority = wrapped.get_info(self._name).priority
-            wrapped = self.listeners[index] = WrappedListener(listener, priority=priority)
+            wrapped = self.listeners[index] = WrappedListener(
+                listener, priority=priority, stopwatch=self._stopwatch
+            )
         await wrapped.run(arity, arguments)
 
     def _position(self, registered: Listener) -> int:
@@ -339,6 +352,8 @@ class _Watch:
                 return index
 
         # Not among those the dispatch started with: watched all the same.
-        self.listeners.append(WrappedListener(registered, self._dispatcher))
+        self.listeners.append(
+            WrappedListener(registered, self._dispatcher, stopwatch=self._stopwatch)
+        )
         self._next = len(self.listeners)
         return self._next - 1

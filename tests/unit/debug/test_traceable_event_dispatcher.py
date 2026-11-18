@@ -10,6 +10,7 @@ from typing import final, override
 import anyio
 import pytest
 from xtr_logging_contracts import AbstractLogger, Context, LevelLike
+from xtr_stopwatch import Stopwatch
 
 from tests.support.dispatchers import ReadOnlyDispatcher
 from tests.support.listeners import RecordingListener
@@ -547,3 +548,59 @@ def test_the_debug_module_imports_without_the_service_contracts() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def _opened() -> Stopwatch:
+    """A stopwatch with a section open, as a unit of work timing itself has."""
+    stopwatch = Stopwatch()
+    stopwatch.open_section()
+    return stopwatch
+
+
+def _timed_names(stopwatch: Stopwatch) -> dict[str, int]:
+    stopwatch.stop_section("timed")
+    return {
+        name: len(event.get_periods())
+        for name, event in stopwatch.get_section_events("timed").items()
+        if event.category == "event_listener"
+    }
+
+
+async def test_with_a_stopwatch_each_listener_run_is_timed(inner: EventDispatcher) -> None:
+    stopwatch = _opened()
+    inner.add_listener("foo", _one)
+    inner.add_listener("foo", _two)
+    traced = TraceableEventDispatcher(inner, stopwatch=stopwatch)
+
+    _ = await traced.dispatch(Event(), "foo")
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert _timed_names(stopwatch) == {f"{__name__}._one": 2, f"{__name__}._two": 2}
+
+
+async def test_with_a_stopwatch_a_lazy_listener_is_timed_as_what_it_built(
+    inner: EventDispatcher,
+) -> None:
+    stopwatch = _opened()
+    listener = RecordingListener()
+
+    async def factory() -> object:
+        return listener
+
+    inner.add_listener("foo", LazyListener(factory, "pre_foo"))
+    traced = TraceableEventDispatcher(inner, stopwatch=stopwatch)
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert _timed_names(stopwatch) == {"tests.support.listeners.RecordingListener.pre_foo": 1}
+
+
+async def test_with_a_stopwatch_another_dispatchers_listeners_are_timed() -> None:
+    stopwatch = _opened()
+    traced = TraceableEventDispatcher(
+        ScopedEventDispatcher(ReadOnlyDispatcher({"foo": [_one]})), stopwatch=stopwatch
+    )
+
+    _ = await traced.dispatch(Event(), "foo")
+
+    assert _timed_names(stopwatch) == {f"{__name__}._one": 1}

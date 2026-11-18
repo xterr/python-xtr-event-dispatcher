@@ -11,7 +11,9 @@ fixed when the container is built, each service built only when an event
 reaches it, and it refuses to change afterwards — a listener that must live
 for one scope goes on a :class:`ScopedEventDispatcher` wrapping it. In debug
 mode it is traced, writing to the ``"event"`` logging channel when the
-logging bundle is active.
+logging bundle is active, and — when xtr-stopwatch is installed — timing every
+listener on the ``Stopwatch`` service, which it registers unless something
+registered one first.
 
 The dispatcher's factory is the one service here given the container
 itself, and on purpose: what it holds is known only once every bundle has
@@ -24,6 +26,7 @@ function's parameters, so it cannot stand in for either.
 
 from __future__ import annotations
 
+import importlib.util
 import inspect
 from collections.abc import Callable, Iterable
 from typing import cast, final, override
@@ -125,7 +128,21 @@ class EventDispatcherBundle(Bundle[EventDispatcherConfig]):
         self._config = config
         debug = bool(builder.get_parameter("kernel.debug"))
         trace = config.trace if config.trace is not None else debug
-        traceable = traceable_event_dispatcher_factory(logged=bundle_active(builder, "logging"))
+        logged = bundle_active(builder, "logging")
+        traceable = traceable_event_dispatcher_factory(logged=logged)
+        if trace and importlib.util.find_spec("xtr_stopwatch") is not None:
+            # Imported here: xtr-stopwatch is optional, and the module's factories
+            # name its Stopwatch in an annotation the container reads at runtime.
+            from xtr_stopwatch import Stopwatch  # noqa: PLC0415 — optional dependency
+
+            from ._timed_factories import (  # noqa: PLC0415 — needs the optional dependency
+                stopwatch,
+                timed_traceable_event_dispatcher_factory,
+            )
+
+            if not builder.has(Stopwatch):
+                _ = services.set(stopwatch)
+            traceable = timed_traceable_event_dispatcher_factory(logged=logged)
         for name in (None, *config.dispatchers):
             _ = services.set(event_dispatcher_factory(name), qualifier=name).add_tag(DISPATCHER_TAG)
             if trace:

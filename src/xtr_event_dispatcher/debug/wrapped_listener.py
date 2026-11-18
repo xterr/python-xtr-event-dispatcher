@@ -15,8 +15,11 @@ from .listener_info import ListenerInfo
 
 if TYPE_CHECKING:
     from xtr_event_dispatcher_contracts import Listener, ListenerIntrospectionInterface
+    from xtr_stopwatch import Stopwatch
 
 __all__ = ["WrappedListener"]
+
+_STOPWATCH_CATEGORY = "event_listener"
 
 
 @final
@@ -25,7 +28,8 @@ class WrappedListener:
 
     Whether it ran, for how long, and whether the event was stopped after it.
     One is made per listener per dispatch, so what it remembers is about that
-    dispatch alone.
+    dispatch alone. Given a stopwatch, each run is also an ``event_listener``
+    event on it, named after the listener, so a timeline shows it.
     """
 
     __slots__: ClassVar[tuple[str, ...]] = (
@@ -36,6 +40,7 @@ class WrappedListener:
         "_listener",
         "_priority",
         "_stopped_propagation",
+        "_stopwatch",
     )
 
     def __init__(
@@ -43,6 +48,7 @@ class WrappedListener:
         listener: Listener,
         dispatcher: ListenerIntrospectionInterface | None = None,
         priority: int | None = None,
+        stopwatch: Stopwatch | None = None,
     ) -> None:
         """Wrap ``listener``.
 
@@ -50,10 +56,12 @@ class WrappedListener:
             listener: What to run.
             dispatcher: Where to ask the listener's priority, when not given.
             priority: The priority it runs at, when already known.
+            stopwatch: Where each run is timed as an event, when given.
         """
         self._listener = listener
         self._dispatcher = dispatcher
         self._priority = priority
+        self._stopwatch = stopwatch
         # Read when the listener first runs here: one a dispatcher runs through
         # :meth:`run` is handed what it takes, and one never run is never read.
         self._arity: int | None = None
@@ -94,11 +102,22 @@ class WrappedListener:
         ``arguments`` are the event, its name and the dispatcher.
         """
         self._called = True
+        # Timed only inside a unit of work timing itself — a profiled request opens a
+        # section — so a context nobody reads, a worker's own loop, never accumulates.
+        timed = (
+            self._stopwatch.start(self.get_pretty(), _STOPWATCH_CATEGORY)
+            if self._stopwatch is not None and self._stopwatch.has_open_section()
+            else None
+        )
         started = perf_counter()
         try:
             await call_listener(self._listener, arity, arguments)
         finally:
             self._duration += perf_counter() - started
+            # The event itself, not its name: the stopwatch's context may have
+            # been reset while the listener ran — by the listener itself.
+            if timed is not None and timed.is_started():
+                _ = timed.stop()
         event = arguments[0]
         if isinstance(event, StoppableEventInterface) and event.is_propagation_stopped():
             self._stopped_propagation = True

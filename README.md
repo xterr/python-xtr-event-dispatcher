@@ -38,6 +38,7 @@ it. Adding a fourth concern is adding a listener, not editing the order code.
 uv add xtr-event-dispatcher                           # the dispatchers
 uv add xtr-event-dispatcher xtr-dependency-injection  # + the container, for the EventDispatcherBundle
 uv add xtr-console                                    # beside it: + debug:event-dispatcher, in debug mode
+uv add 'xtr-event-dispatcher[stopwatch]'              # + every traced listener timed on a stopwatch
 ```
 
 Requires Python 3.14.4+. Depends on `xtr-event-dispatcher-contracts` and
@@ -153,7 +154,7 @@ stops the event — and what it built is kept. Until then `get_listeners` return
 | `ImmutableEventDispatcher(dispatcher)` | Hand a dispatcher out for dispatching only: every change raises `BadMethodCallError`. |
 | `ScopedEventDispatcher(dispatcher)` | Listeners for one scope — a request, a command, a test — next to those of a shared dispatcher, which is left as it is. They interleave by priority. |
 | `CompiledEventDispatcher(listeners)` | Listeners fixed when it is built, then refusing every change. What the container builds. |
-| `debug.TraceableEventDispatcher(dispatcher, logger=None)` | Records which listeners ran, how often and for how long, which did not, and which events nobody heard; `reset()` between units of work. |
+| `debug.TraceableEventDispatcher(dispatcher, logger=None, stopwatch=None)` | Records which listeners ran, how often and for how long, which did not, and which events nobody heard; `reset()` between units of work. |
 
 A listener receives the dispatcher that ran it: the scoped, compiled or traceable one itself, but
 the wrapped one through an `ImmutableEventDispatcher`, which dispatches by delegating.
@@ -162,6 +163,13 @@ A `TraceableEventDispatcher` times every listener: each `ListenerInfo` of
 `get_called_listeners()` carries its `calls` and their total `duration`, in seconds, and every
 "Notified" debug record a `duration`. Wrapping an `EventDispatcher` — the container's always
 are — it leaves running the listeners to it and only watches each call.
+
+Given an [xtr-stopwatch](../xtr-stopwatch) `Stopwatch`, each listener run while the calling
+context has a section open — a profiled request opens one — is also an event on it, named after
+the listener and in the `"event_listener"` category, so a profile can draw where a dispatch spent
+its time on a timeline. Outside an open section nothing is timed, so a context nobody reads, a
+worker's own loop, accumulates nothing. The event is stopped through the object `start` returned,
+so a listener that resets the stopwatch's context still closes its own period.
 
 `ImmutableEventDispatcher` and `ScopedEventDispatcher` wrap an `IntrospectableDispatcherInterface`:
 a dispatcher that dispatches and reads its listeners, nothing more — so one written against the
@@ -336,6 +344,9 @@ builder.prepend_extension_config(
 In debug mode every dispatcher is wrapped in a `TraceableEventDispatcher`, reset between units of
 work (`kernel.reset`); with the logging bundle active it writes to the `"event"` channel. A bundle
 owning a dispatcher traces it the same way with `traceable_event_dispatcher_factory`.
+With [xtr-stopwatch](../xtr-stopwatch) installed — the `stopwatch` extra — it also times every
+listener run inside an open section on the `Stopwatch` service, which the bundle registers, on its
+own monotonic clock, unless a bundle loaded before it registered one.
 
 The bundle's zero-config path builds an empty dispatcher and does no I/O.
 

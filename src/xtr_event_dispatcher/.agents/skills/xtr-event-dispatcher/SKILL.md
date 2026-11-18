@@ -145,7 +145,7 @@ stopped the event — and what it built is kept. Omit the method name to call th
 | `ImmutableEventDispatcher(inner)` | Handing a dispatcher out for dispatching only; every change raises `BadMethodCallError`. |
 | `ScopedEventDispatcher(inner)` | Listeners for one scope — a request, a command, a test — beside a shared dispatcher's, which is left untouched. They interleave by priority. |
 | `CompiledEventDispatcher({OrderPlaced: [(send_receipt, 10)]})` | Listeners fixed at construction, then refusing every change. What the container builds. |
-| `xtr_event_dispatcher.debug.TraceableEventDispatcher(inner, logger=None)` | Seeing what ran. |
+| `xtr_event_dispatcher.debug.TraceableEventDispatcher(inner, logger=None, stopwatch=None)` | Seeing what ran; with a `Stopwatch`, each listener run inside an open section is an `"event_listener"` event on it. |
 
 Read listeners without registering any: `get_listeners(name)` in running order (or every
 event's, with no argument), `get_listener_priority(name, listener)`, `has_listeners(name=None)`.
