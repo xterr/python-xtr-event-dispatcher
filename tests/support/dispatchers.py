@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar, final, overload
+from typing import TYPE_CHECKING, final, overload
 
 from xtr_event_dispatcher_contracts import event_name_of
 
@@ -13,8 +13,6 @@ if TYPE_CHECKING:
 
 __all__ = ["ReadOnlyDispatcher"]
 
-_EventT = TypeVar("_EventT")
-
 
 @final
 class ReadOnlyDispatcher:
@@ -23,7 +21,7 @@ class ReadOnlyDispatcher:
     def __init__(self, listeners: dict[str, list[Listener]]) -> None:
         self._listeners = listeners
 
-    async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
+    async def dispatch[EventT](self, event: EventT, event_name: str | type | None = None) -> EventT:
         name = event_name_of(type(event) if event_name is None else event_name)
         for listener in self._listeners.get(name, []):
             await call_listener(listener, positional_arity(listener), (event, name, self))

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NotRequired, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 __all__ = ["OrderTarget", "SubscribedListener"]
 
-OrderTarget: TypeAlias = "str | type | Callable[..., object]"
+type OrderTarget = "str | type | Callable[..., object]"
 """A listener another one runs before or after.
 
 A class names every listener it provides, a function or method names that

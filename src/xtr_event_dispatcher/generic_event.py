@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, MutableMapping
-from typing import Self
+from typing import Self, override
 
-from typing_extensions import override
 from xtr_event_dispatcher_contracts import Event
 
 from .exception import ArgumentNotFoundError

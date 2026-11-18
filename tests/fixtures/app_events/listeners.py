@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import final
+from typing import final, override
 
-from typing_extensions import override
 from xtr_dependency_injection import Injected
 
 from tests.fixtures.app_events.events import OrderPlaced, OrderShipped

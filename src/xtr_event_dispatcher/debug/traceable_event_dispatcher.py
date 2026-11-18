@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from dataclasses import replace
-from typing import TYPE_CHECKING, TypeVar, final, overload
+from typing import TYPE_CHECKING, final, overload, override
 
-from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
 
 from xtr_event_dispatcher._prioritized_listeners import prioritized_listeners
@@ -24,8 +23,6 @@ if TYPE_CHECKING:
     from .listener_info import ListenerInfo
 
 __all__ = ["TraceableEventDispatcher"]
-
-_EventT = TypeVar("_EventT")
 
 
 @final
@@ -100,7 +97,7 @@ class TraceableEventDispatcher(EventDispatcherInterface):
         """
 
     @override
-    async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
+    async def dispatch[EventT](self, event: EventT, event_name: str | type | None = None) -> EventT:
         """Run the wrapped dispatcher's listeners of the event, recording each outcome."""
         name = event_name_of(type(event) if event_name is None else event_name)
         stoppable = event if isinstance(event, StoppableEventInterface) else None

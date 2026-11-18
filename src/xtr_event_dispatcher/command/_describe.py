@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal
 from xml.etree.ElementTree import (
     Element,
     SubElement,
@@ -22,10 +22,10 @@ if TYPE_CHECKING:
 
 __all__ = ["Format", "describe"]
 
-Format: TypeAlias = Literal["txt", "json", "md", "xml"]
+type Format = Literal["txt", "json", "md", "xml"]
 """The formats the command writes; ``txt`` is for a person, the others for a tool."""
 
-Described: TypeAlias = "Sequence[tuple[str, Sequence[ListenerInfo]]]"
+type Described = "Sequence[tuple[str, Sequence[ListenerInfo]]]"
 
 
 def describe(io: ConsoleStyle, output_format: Format, events: Described) -> None:

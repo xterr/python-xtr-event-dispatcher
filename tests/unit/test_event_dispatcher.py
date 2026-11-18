@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast, final
+from typing import TYPE_CHECKING, cast, final, override
 
 import pytest
-from typing_extensions import override
 
 from tests.support.listeners import DispatcherRecorder, RecordingListener
 from tests.support.subscribers import (

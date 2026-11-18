@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, TypeVar, final, overload
+from typing import TYPE_CHECKING, final, overload, override
 
-from typing_extensions import override
 from xtr_event_dispatcher_contracts import event_name_of
 
 from ._prioritized_listeners import prioritized_listeners
@@ -18,8 +17,6 @@ if TYPE_CHECKING:
     from .introspectable_dispatcher_interface import IntrospectableDispatcherInterface
 
 __all__ = ["ScopedEventDispatcher"]
-
-_EventT = TypeVar("_EventT")
 
 
 @final
@@ -49,7 +46,7 @@ class ScopedEventDispatcher(EventDispatcher):
         self._merged: set[str] = set()
 
     @override
-    async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
+    async def dispatch[EventT](self, event: EventT, event_name: str | type | None = None) -> EventT:
         """Dispatch here when a listener was added for the event, else through the wrapped one."""
         name = event_name_of(type(event) if event_name is None else event_name)
         if super().has_listeners(name):
@@ -58,14 +55,14 @@ class ScopedEventDispatcher(EventDispatcher):
         return await self._dispatcher.dispatch(event, name)
 
     @override
-    async def dispatch_through(
+    async def dispatch_through[EventT](
         self,
-        event: _EventT,
+        event: EventT,
         event_name: str | type | None = None,
         *,
         dispatcher: object,
         call: ListenerCall,
-    ) -> _EventT:
+    ) -> EventT:
         """Dispatch through ``call`` here, or through the wrapped dispatcher when it can.
 
         A wrapped dispatcher that cannot run its listeners through ``call`` —

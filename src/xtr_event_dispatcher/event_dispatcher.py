@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias, TypeVar, final, overload
+from typing import TYPE_CHECKING, final, overload, override
 
-from typing_extensions import override
 from xtr_event_dispatcher_contracts import StoppableEventInterface, event_name_of
 
 from ._listener_call import call_listener, positional_arity
@@ -24,9 +23,8 @@ if TYPE_CHECKING:
 
 __all__ = ["EventDispatcher", "ListenerCall"]
 
-_EventT = TypeVar("_EventT")
 
-ListenerCall: TypeAlias = "Callable[[Listener, Listener, int, tuple[object, ...]], Awaitable[None]]"
+type ListenerCall = "Callable[[Listener, Listener, int, tuple[object, ...]], Awaitable[None]]"
 """Runs one listener for :meth:`EventDispatcher.dispatch_through`.
 
 Given the listener as registered, what runs — the same, or what a lazy
@@ -100,7 +98,7 @@ class EventDispatcher(EventDispatcherInterface):
         self._pending_removals: dict[str, list[_PendingRemoval]] = {}
 
     @override
-    async def dispatch(self, event: _EventT, event_name: str | type | None = None) -> _EventT:
+    async def dispatch[EventT](self, event: EventT, event_name: str | type | None = None) -> EventT:
         """Run every listener of the event, highest priority first, and return it.
 
         See the contract's
@@ -108,14 +106,14 @@ class EventDispatcher(EventDispatcherInterface):
         """
         return await self.dispatch_through(event, event_name, dispatcher=self, call=_call)
 
-    async def dispatch_through(
+    async def dispatch_through[EventT](
         self,
-        event: _EventT,
+        event: EventT,
         event_name: str | type | None = None,
         *,
         dispatcher: object,
         call: ListenerCall,
-    ) -> _EventT:
+    ) -> EventT:
         """Dispatch as :meth:`dispatch` does, running each listener through ``call``.
 
         For a dispatcher wrapping this one that must see every call — the

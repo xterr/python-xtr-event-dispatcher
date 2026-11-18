@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import FunctionType
-from typing import TYPE_CHECKING, TypeVar, cast, overload
+from typing import TYPE_CHECKING, cast, overload
 
 from xtr_event_dispatcher._ordering import describe_invalid_target, ordering_targets, target_name
 from xtr_event_dispatcher.exception import InvalidListenerError
@@ -17,9 +17,6 @@ if TYPE_CHECKING:
 
 __all__ = ["as_event_listener"]
 
-_ListenerT = TypeVar("_ListenerT", bound="Callable[..., object] | type")
-_FunctionT = TypeVar("_FunctionT", bound="Callable[..., object]")
-_DeclaredT = TypeVar("_DeclaredT")
 
 # What ``@as_event_listener`` written bare is handed: never an event, which is a
 # name or a class, so a class is only ever declared a listener with parentheses.
@@ -27,7 +24,7 @@ _BARE_TARGETS = (FunctionType, staticmethod, classmethod)
 
 
 @overload
-def as_event_listener(
+def as_event_listener[ListenerT: "Callable[..., object] | type"](
     event: str | type | None = None,
     *,
     method: str | None = None,
@@ -35,14 +32,14 @@ def as_event_listener(
     dispatcher: str | None = None,
     before: OrderTarget | Sequence[OrderTarget] | None = None,
     after: OrderTarget | Sequence[OrderTarget] | None = None,
-) -> Callable[[_ListenerT], _ListenerT]: ...
+) -> Callable[[ListenerT], ListenerT]: ...
 
 
 @overload
-def as_event_listener(event: _FunctionT, /) -> _FunctionT: ...
+def as_event_listener[FunctionT: "Callable[..., object]"](event: FunctionT, /) -> FunctionT: ...
 
 
-def as_event_listener(  # noqa: PLR0913 — one argument per thing a listener can declare.
+def as_event_listener[ListenerT: "Callable[..., object] | type"](  # noqa: PLR0913 — one argument per thing a listener can declare.
     event: str | type | Callable[..., object] | None = None,
     *,
     method: str | None = None,
@@ -50,7 +47,7 @@ def as_event_listener(  # noqa: PLR0913 — one argument per thing a listener ca
     dispatcher: str | None = None,
     before: OrderTarget | Sequence[OrderTarget] | None = None,
     after: OrderTarget | Sequence[OrderTarget] | None = None,
-) -> Callable[[_ListenerT], _ListenerT] | Callable[..., object]:
+) -> Callable[[ListenerT], ListenerT] | Callable[..., object]:
     """Declare the decorated class, method or function a listener, for a container to register.
 
     It only records the declaration: the event dispatcher bundle reads it and
@@ -100,7 +97,7 @@ def as_event_listener(  # noqa: PLR0913 — one argument per thing a listener ca
     if isinstance(event, _BARE_TARGETS):
         return _declared(event, EventListenerDeclaration(None, None, None, None, (), ()))
 
-    def decorate(listener: _ListenerT) -> _ListenerT:
+    def decorate(listener: ListenerT) -> ListenerT:
         name = target_name(listener)
 
         def invalid(target: object) -> InvalidListenerError:
@@ -121,7 +118,7 @@ def as_event_listener(  # noqa: PLR0913 — one argument per thing a listener ca
     return decorate
 
 
-def _declared(listener: _DeclaredT, declaration: EventListenerDeclaration) -> _DeclaredT:
+def _declared[DeclaredT](listener: DeclaredT, declaration: EventListenerDeclaration) -> DeclaredT:
     """Record ``declaration`` on ``listener``, and return it as it was."""
     # Above ``@staticmethod`` or ``@classmethod``, record on the function
     # they wrap, where the reader looks whichever way round they are.

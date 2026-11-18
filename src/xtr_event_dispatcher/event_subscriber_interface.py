@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, TypeAlias, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 __all__ = ["EventSubscriberInterface", "SubscribedEvents"]
 
-SubscribedEvents: TypeAlias = (
+type SubscribedEvents = (
     "str | tuple[str, int] | SubscribedListener | list[str | tuple[str, int] | SubscribedListener]"
 )
 """What a subscriber declares for one event.

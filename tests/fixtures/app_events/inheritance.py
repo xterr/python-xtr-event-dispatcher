@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import final
+from typing import final, override
 
-from typing_extensions import override
 from xtr_dependency_injection import Injected, exclude
 
 from tests.fixtures.app_events.journal import Journal

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from inspect import signature
-from typing import TypeAlias
 
 from xtr_dependency_injection import bind_callable
 from xtr_event_dispatcher_contracts import Listener
@@ -76,4 +75,4 @@ class FunctionListener:
         return listener
 
 
-ListenerReference: TypeAlias = ServiceListener | FunctionListener
+type ListenerReference = ServiceListener | FunctionListener

@@ -4,9 +4,9 @@
 
 **Let the parts of an application talk through events: listeners and subscribers run by priority, any of them able to stop the rest.**
 
-<img alt="python 3.11+" src="https://img.shields.io/badge/python-%E2%89%A5%203.11-3776AB?logo=python&logoColor=white">
+<img alt="python 3.14+" src="https://img.shields.io/badge/python-%E2%89%A5%203.14-3776AB?logo=python&logoColor=white">
 <img alt="asyncio" src="https://img.shields.io/badge/asyncio-native-1f6feb">
-<img alt="core dependencies: 3" src="https://img.shields.io/badge/core%20deps-3-3FB950">
+<img alt="core dependencies: 2" src="https://img.shields.io/badge/core%20deps-2-3FB950">
 <img alt="typed" src="https://img.shields.io/badge/typed-ty%20%2B%20basedpyright-1f6feb">
 <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
 
@@ -40,7 +40,7 @@ uv add xtr-event-dispatcher xtr-dependency-injection  # + the container, for the
 uv add xtr-console                                    # beside it: + debug:event-dispatcher, in debug mode
 ```
 
-Requires Python 3.11+. Depends on `typing-extensions`, `xtr-event-dispatcher-contracts` and
+Requires Python 3.14.4+. Depends on `xtr-event-dispatcher-contracts` and
 `xtr-logging-contracts` — not on the container: the bundle is used when
 [xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, never as
 an extra, and the dispatchers work without it.

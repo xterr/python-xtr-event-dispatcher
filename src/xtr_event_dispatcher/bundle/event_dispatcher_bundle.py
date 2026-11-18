@@ -26,9 +26,8 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterable
-from typing import cast, final
+from typing import cast, final, override
 
-from typing_extensions import override
 from xtr_dependency_injection import (
     BUNDLE_PASS_PRIORITY,
     Bundle,

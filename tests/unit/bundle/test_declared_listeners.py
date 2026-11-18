@@ -4,10 +4,9 @@ from __future__ import annotations
 import typing
 from collections.abc import Hashable, Mapping
 from dataclasses import dataclass, field
-from typing import cast, final
+from typing import cast, final, override
 
 import pytest
-from typing_extensions import override
 from xtr_dependency_injection import (
     Injected,  # noqa: TC002 — read at runtime, from the listeners' annotations.
 )

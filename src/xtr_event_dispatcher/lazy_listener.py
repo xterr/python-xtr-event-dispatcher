@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import weakref
-from typing import TYPE_CHECKING, ClassVar, cast
-
-from typing_extensions import override
+from typing import TYPE_CHECKING, ClassVar, cast, override
 
 from ._listener_call import call_listener, positional_arity
 
