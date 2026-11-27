@@ -1,6 +1,6 @@
 [project]
 name = "xtr-event-dispatcher"
-version = "7.3.0"
+version = "7.4.0"
 description = "Let the parts of an application talk through events: listeners and subscribers run by priority, any of them able to stop the rest."
 readme = "README.md"
 authors = [
@@ -20,8 +20,8 @@ classifiers = [
 # `xtr-logging-contracts`, the interface alone, for the traceable dispatcher's
 # optional logger.
 dependencies = [
-    "xtr-event-dispatcher-contracts>=7.3,<8",
-    "xtr-logging-contracts>=7.3,<8",
+    "xtr-event-dispatcher-contracts>=7.4,<8",
+    "xtr-logging-contracts>=7.4,<8",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
@@ -36,7 +36,7 @@ event_dispatcher = "xtr_event_dispatcher.recipe"
 # In debug mode the traced dispatcher times every listener on a stopwatch, when
 # one is installed; the extra installs it.
 [project.optional-dependencies]
-stopwatch = ["xtr-stopwatch>=7.3,<8"]
+stopwatch = ["xtr-stopwatch>=7.4,<8"]
 
 [dependency-groups]
 dev = [
@@ -46,11 +46,11 @@ dev = [
     "pytest-cov>=7.1",
     "anyio>=4.10",
     "ty>=0.0.83",
-    "xtr-console>=7.3,<8",
-    "xtr-dependency-injection>=7.3,<8",
-    "xtr-stopwatch>=7.3,<8",
-    "xtr-logging>=7.3,<8",
-    "xtr-service-contracts>=7.3,<8",
+    "xtr-console>=7.4,<8",
+    "xtr-dependency-injection>=7.4,<8",
+    "xtr-stopwatch>=7.4,<8",
+    "xtr-logging>=7.4,<8",
+    "xtr-service-contracts>=7.4,<8",
 ]
 
 [build-system]
